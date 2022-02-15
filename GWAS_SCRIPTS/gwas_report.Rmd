@@ -1,0 +1,483 @@
+---
+title: "GWAS Report"
+output:
+  html_document:
+    toc: true
+    theme: united
+    toc_float: false
+params:
+  workfolder: unknown
+  regtype: unknown
+  ident: unknown
+  nr_samples: 0
+  nr_markers: 0
+  nr_sigmarkers: 0
+  genoid: unknown
+  nr_geno: 0
+  lm_call: unknown
+  phenoname: unknown 
+  plink: unknown
+  lambda: unknown 
+  mac: unknown  
+  maf: unknown 
+  vif: unknown 
+  sample_max_miss: unknown  
+  marker_max_miss: unknown  
+  machr2_low: unknown
+  machr2_high: unknown   
+  hwe_pval: unknown 
+  excel_file: unknown
+  signif_file: unknown
+  filtered_file: unknown
+  cojo_done: unknown
+  clump_done: unknown  
+  cojo_file: unknown 
+  cojo_window: unknown  
+  cojo_pval: unknown
+  cojo_coline: unknown 
+  cojo_refgen: unknown  
+  cojo_maf: unknown    
+  cojo_orig_file: unknown 
+  clump_file: unknown
+  clump_p1: unknown  
+  clump_p2: unknown  
+  clump_r2: unknown
+  clump_kb: unknown 
+  clump_refgen: unknown     
+  cojo_neargene_file: unknown
+  clump_neargene_file: unknown  
+  signif_neargene_file: unknown   
+  qq_plot: unknown
+  man_plot: unknown
+  snp_density_plot: unknown
+  histo_plot: unknown
+  cookplot: unknown  
+  kernel_plot: unknown
+  datafile: unknown
+  residfile: unknown
+  metricfile: unknown
+  lmfile: unknown
+  viffile: unknown
+  histplot: unknown
+  qqplotres: unknown
+  form: unknown
+---
+
+
+
+
+<!-- params = get(load("rmd_review_params.RData")) - saved in review_gwas.R then run code below for testing -->
+
+```{r, echo = FALSE}
+workfolder = params$workfolder
+regtype = params$regtype
+ident = params$ident
+nr_samples = params$nr_samples
+nr_markers = params$nr_markers
+nr_sigmarkers = params$nr_sigmarkers 
+genoid = params$genoid
+nr_geno = params$nr_geno
+lm_call = params$lm_call
+phenoname = params$phenoname
+plink = params$plink
+lambda = params$lambda
+mac = params$mac 
+maf = params$maf
+vif = params$vif
+sample_max_miss = params$sample_max_miss
+marker_max_miss = params$marker_max_miss 
+machr2_low = params$machr2_low 
+machr2_high = params$machr2_high 
+hwe_pval = params$hwe_pval  
+excel_file = params$excel_file
+signif_file = params$signif_file
+filtered_file = params$filtered_file
+cojo_done = params$cojo_done   	# logical
+clump_done = params$clump_done 	# logical
+cojo_file = params$cojo_file 
+cojo_window = params$cojo_window
+cojo_pval = params$cojo_pval
+cojo_coline = params$cojo_coline
+cojo_refgen = params$cojo_refgen
+cojo_maf = params$cojo_maf			
+cojo_orig_file = params$cojo_orig_file  	
+clump_file = params$clump_file 
+clump_p1 = params$clump_p1
+clump_p2 = params$clump_p2
+clump_r2 = params$clump_r2
+clump_kb = params$clump_kb 
+clump_refgen = params$clump_refgen		
+cojo_neargene_file = params$cojo_neargene_file 	
+clump_neargene_file = params$clump_neargene_file
+signif_neargene_file = params$signif_neargene_file 
+qq_plot = params$qq_plot
+man_plot = params$man_plot
+snp_density_plot = params$snp_density_plot
+histo_plot = params$histo_plot
+cookplot = params$cookplot
+kernel_plot = params$kernel_plot 
+datafile = params$datafile
+residfile = params$residfile
+metricfile = params$metricfile
+lmfile = params$lmfile
+viffile = params$viffile
+histplot = params$histplot
+qqplotres = params$qqplotres
+```
+
+<br>  
+
+
+
+
+## Overview
+
+
+<!-- The overview with the detailed henoid description was saved to ~/bin/overview_with_genoid_description.Rmd -->
+
+These are the GWAS results for job <span style="color:red"> `r ident` </span> 
+with `r prettyNum(as.integer(nr_samples), big.mark=".", decimal.mark=",")` samples, 
+run for the phenotype <span style="color:red"> `r phenoname` </span>.
+
+<br>
+
+
+ 
+
+
+
+
+
+## Methods
+
+The association between `r phenoname` and each variant with a minor allele count $\ge$ `r mac` and 
+an imputation quality metric $r^2 \ge$ `r machr2_low` was tested using the `r regtype` regression model:  
+
+<span style="color:blue">
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; `r lm_call` 
+</span>
+
+The association tests were performed using *`r plink`*, including a total of 
+`r prettyNum(as.integer(nr_markers), big.mark=".", decimal.mark=",")` markers (after filtering).
+Markers having a Hardy-Weinberg equilibrium exact test p-value below `r formatC(hwe_pval, format = "e", digits = 1)` were filtered out.  
+`r prettyNum(as.integer(nr_sigmarkers), big.mark=".", decimal.mark=",")` significant markers have been found.
+The genomic inflation factor was $\lambda =$ `r lambda`. 
+
+
+```{r setup, echo = FALSE}
+library(knitr)
+library(DT, quietly = TRUE)
+```
+
+<br>
+
+## GWAS parameters
+
+The plink2 program was run with the following parameters:
+
+ - Minor allele count cutoff: `r prettyNum(mac, big.mark=".", decimal.mark=",")`
+ - Minor allele frequency cutoff: `r prettyNum(maf, big.mark=".", decimal.mark=",")`
+ - Maximum variance inflation factor: `r prettyNum(vif, big.mark=".", decimal.mark=",")` 
+ - Sample missing call rate cutoff: `r prettyNum(sample_max_miss, big.mark=".", decimal.mark=",")`
+ - Variant missing call rate cutoff: `r prettyNum(marker_max_miss, big.mark=".", decimal.mark=",")`
+ - Minimum imputation quality: `r prettyNum(machr2_low, big.mark=".", decimal.mark=",")`
+ - Maximum imputation quality: `r prettyNum(machr2_high, big.mark=".", decimal.mark=",")`
+ - Hardy-Weinberg exact test p-value threshold: `r prettyNum(hwe_pval, big.mark=".", decimal.mark=",")`
+
+
+<br>
+
+
+
+
+## Filtered samples and variants
+
+The table displays the number of samples/variants that have been removed due to different filters:
+
+ - **SGENO**: Samples removed due to missing genotype. Cutoff: `r prettyNum(sample_max_miss, big.mark=".", decimal.mark=",")`
+ - **VGENO**: Variants removed due to missing genotype. Cutoff: `r prettyNum(marker_max_miss, big.mark=".", decimal.mark=",")`
+ - **VHWE**:  Variants removed after Hardy-Weinberg exact test. P-value cutoff: `r prettyNum(hwe_pval, big.mark=".", decimal.mark=",")`
+ - **VFREQ**: Variants removed due to allele frequency threshold(s). Cutoffs: mac = `r prettyNum(mac, big.mark=".", decimal.mark=",")` ; maf = `r prettyNum(maf, big.mark=".", decimal.mark=",")`
+ - **VIMP**:  Variants removed due to imputation quality filter (MACH-R2). Cutoff: `r prettyNum(machr2_low, big.mark=".", decimal.mark=",")` - `r prettyNum(machr2_high, big.mark=".", decimal.mark=",")`
+
+  
+```{r filter, echo = FALSE, warning = FALSE}
+filtered_file = paste(workfolder, filtered_file, sep ="/")  # "/castor/project/proj/GWAS_TEST/LIV_MULT4/LIV_MULT4_liv2_cojoed_markers.RData"
+if(file.exists(filtered_file)) {
+  filtered = get(load(filtered_file))
+} else {
+  stop(paste("\n\n  ERROR (gwas_report.Rmd): File", filtered_file, "not found.\n\n"))
+}
+```
+
+<!-- need extra chunk for data table -->
+
+```{r filter_table, echo = FALSE, warning = FALSE}
+options(htmlwidgets.TOJSON_ARGS = list(na = 'string'))   # show NA (no empty fields!) 
+datatable(filtered, class = 'cell-border stripe', rownames = FALSE, width = 600, options = list(dom = 'tp')) 
+```
+
+<br>
+
+
+
+
+<!-- Table with genome-wide significant markers --> 
+
+```{asis, echo = signif_file == "none"}
+## Genome-wide significant markers
+No genome-wide significant markers found.
+```
+
+```{r, child = if (signif_file != "none") 'table_signif.Rmd'}
+```
+
+<br>
+
+
+
+<!-- Table with GCTA-COJO results -->
+
+
+```{asis, echo = !cojo_done}
+## GCTA-COJO results
+GCTA cojo was not conducted.
+```
+
+```{asis, echo = cojo_done & cojo_file == "none"}
+## GCTA-COJO results
+No independent markers identified by GCTA cojo.
+```
+
+```{r, child = if (cojo_file != "none") 'table_cojoed.Rmd'}
+```
+
+<br>
+
+
+<!-- Table with plink-clump results -->
+
+```{asis, echo = !clump_done}
+## CLUMP results
+Plink clumping was not conducted.
+```
+
+```{asis, echo = clump_done & clump_file == "none"}
+## CLUMP results
+No independent markers identified by plink clump.
+```
+
+```{r, child = if (clump_file != "none") 'table_clumped.Rmd'}
+```
+
+<br>
+
+
+
+
+<!-- Compare cojo with plink-clump results -->
+
+
+```{r, child = if (clump_file != "none" & cojo_file != "none") 'comparison_plink_clump.Rmd'}
+```
+
+<br> 
+
+
+
+<!-- Show all significant markers: only if neither cojo nor clump was conducted, and if significant markers were found --> 
+
+
+```{r, child = if (clump_file == "none" & cojo_file == "none" & signif_file != "none") 'table_unpruned.Rmd'}
+```
+<br> 
+
+
+
+## QQ-plot for $p$-values
+
+```{r, echo=FALSE, fig.cap="", out.width = '100%', fig.align='left'}
+plot = paste(workfolder, qq_plot, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+
+## Manhattan plot
+
+```{r, echo=FALSE, fig.cap="", out.width = '100%', fig.align='left'}
+plot = paste(workfolder, man_plot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+
+## SNP density plot
+
+```{r, echo=FALSE, fig.cap="", out.width = '100%', fig.align='left'}
+plot = paste(workfolder, snp_density_plot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+
+
+## Histogram of $\beta$ values 
+
+```{r, echo=FALSE, fig.cap="", out.width = '100%', fig.align='left'}
+plot = paste(workfolder, histo_plot, sep ="/")
+knitr::include_graphics(plot)
+```
+
+
+## Kernel density plot of $\beta$ values 
+
+```{r, echo=FALSE, fig.cap="", out.width = '100%', fig.align='left'}
+plot = paste(workfolder, kernel_plot, sep ="/")
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+
+
+
+## Regression diagnostics  
+
+A regression was conducted using the linear model 
+
+<span style="color:blue">
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; `r form` 
+</span>
+
+(Note that no marker genotype has been included). 
+The dataframe used as regression input is stored in *`r datafile`*, while the residuals are in *`r residfile`*. 
+
+<br> 
+
+
+```{asis, echo = regtype == "linear"} 
+### Some metrics obtained using the linear regression model:
+
+- **sigma** is the estimatimated standard deviation of the noise term 
+- **Fstat** is the value of the F-statistic
+- **Rsquared** is coefficient of determination 
+- **Rsq.adj** is coefficient of determination adjusted for the number of predictors 
+- **AIC** is the Akaike information criterion (which estimates the quality of a gregession model, relative to others)
+```
+
+
+```{r metrics, echo = FALSE, warning = FALSE, eval = regtype == "linear"} 
+# options(scipen = 999)
+results = get(load(metricfile))
+results$value = signif(results$value, 4)  
+datatable(t(results), class = 'cell-border stripe', options = list(dom = 't'), rownames = FALSE) 
+```
+
+<br>
+
+```{asis, echo = regtype == "linear"}
+### Regression coefficients obtained with `lm()`:
+```
+
+
+```{asis, echo = regtype == "logistic"}
+### Regression coefficients obtained with `glm()`:
+```
+
+
+<br>
+
+```{r regression_R, echo=FALSE, warning = FALSE}
+results = get(load(lmfile))
+# results
+results = signif(results,3)
+datatable(results, class = 'cell-border stripe', width = 600, options = list(dom = 't', pageLength = 25), rownames = TRUE)
+```
+<br>
+
+
+## Variance inflation factors  
+
+Variance inflation factors (VIF) are calculated in order to discover multicollinearity.
+VIF  can be obtained by regressing a single independent variable against all other independent variables.
+As a rule of thumb, no variance inflation factor should be bigger than 10. 
+Otherwise, highly correlated variables should be removed from the model. 
+
+
+```{r vif, echo = FALSE, warning = FALSE}
+results = get(load(viffile))
+# results
+results$vif = signif(results$vif, 5)
+datatable(results, class = 'cell-border stripe', width = 200, options = list(dom = 't', pageLength = 25), rownames = TRUE)
+```
+
+<br> 
+
+
+```{asis, echo = regtype == "linear"}
+
+###  Histogram for the magnitudes of the residuals
+
+According to the linear model established, the residuals should be normally distributed. 
+Consequently, the histogram below should approximately resemble a normal distribution.
+The residuals have been saved to <span style="color:red"> `r residfile` </span>.
+```
+
+
+```{r, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left', eval = regtype == "linear"}
+plot = paste(workfolder, histplot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+```{asis, echo = regtype == "linear"}
+<br> 
+```
+
+
+```{asis, echo = regtype == "linear"}
+
+### Normal Q-Q plot of the residuals
+
+This plot shows if residuals are normally distributed. 
+It is desirable that the points displaying the residuals are located close to the straight line.
+```
+
+```{r qqplotres, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left', eval = regtype == "linear"}
+plot = paste(workfolder, qqplotres, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+
+
+
+## Technical information / Help   
+
+
+```{r params, echo = FALSE, warning = FALSE}   
+parfile = paste(ident, "_gwas_params.txt", sep="")
+parfile_path = paste(workfolder, parfile, sep = "/") 
+```
+
+ - GWAS **workfolder** `r workfolder`
+ - **Parameter file**: `r parfile_path`   
+ - <uwe.menzel@medsci.uu.se> 
+ 
+<br> 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

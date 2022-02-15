@@ -1,0 +1,120 @@
+
+
+<!-- Table with COJO reults. Child chunk for gwas_report.Rmd -->
+
+
+## GCTA-COJO results
+
+
+The GCTA-COJO program was run using the following parameters: 
+
+ - $p$-value: `r prettyNum(cojo_pval, big.mark=".", decimal.mark=",")`
+ - window size: `r cojo_window` kB       
+ - collinearity threshold ($R^2$): `r prettyNum(cojo_coline, big.mark=".", decimal.mark=",")`
+ - minor allele frequency cutoff (**A1_FREQ**): `r prettyNum(cojo_maf, big.mark=".", decimal.mark=",")`
+ - reference genome: `r cojo_refgen`
+ 
+
+<br> 
+
+```{r cojo_results, echo = FALSE, warning = FALSE, eval = cojo_done}
+cojo_file = paste(workfolder, cojo_file, sep ="/")  
+if(file.exists(cojo_file)) {
+  results = get(load(cojo_file))
+  nr_cojo_results = nrow(results) 
+} else {
+  stop(paste("\n\n  ERROR (gwas_report.Rmd): File", cojo_file, "not found.\n\n"))
+} 
+results = results[,-7]  
+rownames(results) = 1:nrow(results)  
+
+names = results[,1]                        # all marker names
+cojo_names = names			   # find intersection with clump  
+ind1 = grep("^rs", names)                  # rs names               
+ind2 = grep("^rs", names, invert = TRUE)   # other names  integer(0)  possible (likely)  
+
+underscore_pos = as.integer(regexpr("_", names[ind1], fixed = TRUE))   
+names[ind1] = ifelse(underscore_pos > 0, substr(names[ind1], 1, underscore_pos - 1), names[ind1]) # rs1234567_A_C ==> rs1234567 
+urls = paste0("http://www.phenoscanner.medschl.cam.ac.uk/?query=", names, "&catalogue=GWAS&p=1e-5&proxies=None&r2=0.8&build=37")  
+
+pheno_links = character(nrow(results))
+pheno_links[ind1] = paste0('<a href="', urls[ind1] ,'">', names[ind1] ,"</a>")
+pheno_links[ind2] = names[ind2]     
+results[,1] = pheno_links                   # use DT:datatable with escape = -2
+
+chroms = results[,2]
+positions = results[,3]
+p1 = positions - 2000  
+p2 = positions + 2000
+urls = paste0("http://genome.ucsc.edu/cgi-bin/hgTracks?db=hg38&position=chr", chroms, ":", p1, "-", p2)
+marker_links = paste('<a href="', urls ,'">', positions ,"</a>", sep="")
+results[,3] = marker_links 
+
+cojo_neargene_file = paste(workfolder, cojo_neargene_file, sep ="/")
+if(file.exists(cojo_neargene_file)) { 
+  cojo_near_genes = get(load(cojo_neargene_file))   
+} else {
+  stop(paste("\n\n  ERROR (gwas_report.Rmd): File", cojo_neargene_file, "not found.\n\n"))
+}
+if(length(cojo_near_genes) != nrow(results)) stop(paste("\n\n  ERROR (gwas_report.Rmd): Inconsistent data", cojo_neargene_file, "vs.", cojo_file, "\n\n" )) 
+
+genes = unlist(lapply(cojo_near_genes, `[[`, 1))                                             
+chromosomes = unlist(lapply(cojo_near_genes, `[[`, 2))   
+starts = unlist(lapply(cojo_near_genes, `[[`, 3)) 
+ends = unlist(lapply(cojo_near_genes, `[[`, 4))
+urls = paste0("http://genome.ucsc.edu/cgi-bin/hgTracks?db=hg38&position=chr", chromosomes, ":", starts, "-", ends)    
+gene_links = paste('<a href="', urls ,'">', genes ,"</a>", sep="")  
+results = cbind(results, genes)
+results[,ncol(results)] = gene_links  
+
+results$P = signif(results$P, 4)  # no problem if NA
+results$A1_FREQ = signif(results$A1_FREQ, 3)
+results$BETA = signif(results$BETA, 4)
+results$SE = signif(results$SE, 3)
+```
+
+<!-- need extra chunk for data table -->
+
+```{r cojo_table, echo = FALSE, warning = FALSE, eval = cojo_done}
+options(htmlwidgets.TOJSON_ARGS = list(na = 'string'))   # show NA (no empty fields!) 
+datatable(results, filter = "top", class = 'cell-border stripe', escape = c(-2, -4, -11), width = 1200) %>% formatStyle('BETA', color = 'green') 
+```
+
+<br>
+
+
+## Table with corresponding original results
+
+<br>
+
+```{r cojo_orig_results, echo = FALSE, warning = FALSE, eval = cojo_done}
+cojo_orig_file = paste(workfolder, cojo_orig_file, sep ="/")
+if(file.exists(cojo_orig_file)) {
+  results = get(load(cojo_orig_file))
+  if(nrow(results) != nr_cojo_results) {
+    stop(paste("\n\n  ERROR (gwas_report.Rmd): Unequal number of results:\n   ", cojo_file, "vs.\n   ", cojo_orig_file, "\n\n" )) # AB1
+    # probably run with differnt number of chromosomes
+  }
+} else {
+  stop(paste("\n\n  ERROR (gwas_report.Rmd): File", cojo_orig_file, "not found.\n\n"))
+}
+results = results[,-7]  # redundant 
+rownames(results) = 1:nrow(results)  
+
+# now, we can use the results from the chunk above ("cojo_results") because only P, beta, and SE are changed
+
+results[,1] = pheno_links			 # pheno_links, same as above	  use DT:datatable with escape = -2
+results[,3] = marker_links			 # marker links, same as above
+results = cbind(results, genes) 	 	 # genes, same as above
+results[,ncol(results)] = gene_links		 # gene links, same as above
+results$P = signif(results$P, 4)  
+results$A1_FREQ = signif(results$A1_FREQ, 3)
+results$BETA = signif(results$BETA, 4)
+results$SE = signif(results$SE, 3)
+```
+
+<!-- need extra chunk for data table -->
+
+```{r cojo_orig_table, echo = FALSE, warning = FALSE, eval = cojo_done}   
+datatable(results, filter = "top", class = 'cell-border stripe', escape = c(-2, -4, -11), width = 1200) %>% formatStyle('BETA', color = 'green') 
+```

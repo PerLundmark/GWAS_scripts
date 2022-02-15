@@ -1,0 +1,15 @@
+
+<!-- Table with genome-wide significance. Child chunk for gwas_report.Rmd --> 
+
+## Genome-wide significant markers
+
+ - Markers with $p \le 5 \cdot 10^{-8}$ are displayed, no matter what the corresponding $\beta$-value is.
+ - [Spreadsheet](`r excel_file`) with significant markers (only available if copied separately)
+ - ID: link to [Phenoscanner](http://www.phenoscanner.medschl.cam.ac.uk)  
+ - POS: link to marker position at [UCSC Genome Brower](https://genome.ucsc.edu) 
+ - genes: link to nearest gene (UCSC Genome Brower)
+ - <span style="color:red"> Note </span>: *A1_FREQ*, *BETA*, *SE*, and *P* are not available if only one significant marker resides on a whole chromosome. 
+ 
+ 
+
+

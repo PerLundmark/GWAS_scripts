@@ -1,0 +1,185 @@
+---
+title: "GWAS Diagnostics"
+output:
+  html_document:
+    toc: true
+    theme: united
+    toc_float: false
+params:
+  workfolder: unknown
+  res1: unknown
+  res2: unknown  
+  nr_samples_1: 0
+  nr_samples_2: 0
+  nr_common: 0 
+  summaryfile: unknown 
+  histplot: unknown
+  densityplot: unknown
+  qqplot: unknown
+  ecdfplot: unknown
+  scatterplot: unknown  
+---
+
+
+
+<!---
+https://rmarkdown.rstudio.com/developer_parameterized_reports.html%23parameter_types%2F
+The declared parameters are automatically made available within the knit environment as components of a read-only list named params. 
+---> 
+
+
+
+```{r, echo = FALSE}
+workfolder = params$workfolder
+res1 = params$res1
+res2 = params$res2 
+nr_samples_1 = params$nr_samples_1
+nr_samples_2 = params$nr_samples_2
+nr_common = params$nr_common
+summaryfile = params$summaryfile
+histplot = params$histplot
+densityplot = params$densityplot
+qqplot = params$qqplot
+ecdfplot = params$ecdfplot
+scatterplot = params$scatterplot
+```
+
+<br>  
+
+
+
+```{r setup, echo = FALSE}
+library(knitr)
+library(DT, quietly = TRUE)
+```
+
+
+
+
+
+
+
+## 1. Overview 
+
+
+This is a comparison of the residuals stored in <span style="color:red"> `r res1` </span> 
+and <span style="color:red"> `r res2` </span>, respectively.
+
+ - The residuals in <span style="color:red"> `r res1` </span> contain `r prettyNum(as.integer(nr_samples_1), big.mark=".", decimal.mark=",")` observations. 
+ - The residuals in <span style="color:red"> `r res2` </span> contain `r prettyNum(as.integer(nr_samples_2), big.mark=".", decimal.mark=",")` observations.
+ - Both files have `r prettyNum(as.integer(nr_common), big.mark=".", decimal.mark=",")` common observations.
+
+
+
+<br> 
+
+
+## 2. Summary tables  
+
+
+```{r summary, echo = FALSE, warning = FALSE}
+results = get(load(summaryfile))
+datatable(results, class = 'cell-border stripe', width = 200, options = list(dom = 't', pageLength = 25), rownames = TRUE)
+```
+
+<br> 
+
+
+
+
+
+
+
+
+## 3. Comparison of the histograms  
+ 
+
+<br>
+
+```{r, echo = FALSE, fig.cap = "", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, histplot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+
+
+
+
+
+## 4. Comparison of the Kernel density plots 
+
+
+```{r, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, densityplot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+
+<br> 
+
+
+
+
+## 5. Comparison of the Quantile-Quantile-plots 
+
+
+```{r, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, qqplot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+
+
+
+
+
+
+## 6. Comparison of the Empirical Cumulative distribution functions 
+
+
+```{r, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, ecdfplot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+
+
+## 7. Scatterplot residuals 1 vs. residuals 2  
+
+
+```{r, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, scatterplot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+
+
+
+
+## 8. Technical information / Help 
+ 
+<br>
+
+ - GWAS workfolder: `r workfolder`
+ - <uwe.menzel@medsci.uu.se>   
+
+<br> 
+
+
+
+
+
+
+
+
+
+
+

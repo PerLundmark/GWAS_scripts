@@ -1,0 +1,71 @@
+
+
+<!-- Table with all genome-wide significant markers (not pruned). Child chunk for gwas_report.Rmd --> 
+
+
+
+## Unpruned significant markers
+
+
+```{r signif_results, echo = FALSE, warning = FALSE}
+signif_file = paste(workfolder, signif_file, sep ="/")  
+if(file.exists(signif_file)) {
+  results = get(load(signif_file))
+} else {
+  stop(paste("\n\n  ERROR (gwas_report.Rmd): File", signif_file, "not found.\n\n"))
+}
+results = results[,-7]  # redundant
+rownames(results) = 1:nrow(results)  
+
+names = results[,1]                        # all marker names 
+ind1 = grep("^rs", names)                  # rs names               
+ind2 = grep("^rs", names, invert = TRUE)   # other names   
+
+underscore_pos = as.integer(regexpr("_", names[ind1], fixed = TRUE))   
+names[ind1] = ifelse(underscore_pos > 0, substr(names[ind1], 1, underscore_pos - 1), names[ind1]) # rs1234567_A_C ==> rs1234567 
+urls = paste0("http://www.phenoscanner.medschl.cam.ac.uk/?query=", names, "&catalogue=GWAS&p=1e-5&proxies=None&r2=0.8&build=37")  
+
+pheno_links = character(nrow(results))
+pheno_links[ind1] = paste0('<a href="', urls[ind1] ,'">', names[ind1] ,"</a>")
+pheno_links[ind2] = names[ind2]     
+results[,1] = pheno_links                   # use DT:datatable with escape = -2
+
+chroms = results[,2]
+positions = results[,3]
+p1 = positions - 2000  
+p2 = positions + 2000
+urls = paste0("http://genome.ucsc.edu/cgi-bin/hgTracks?db=hg38&position=chr", chroms, ":", p1, "-", p2)
+marker_links = paste('<a href="', urls ,'">', positions ,"</a>", sep="")
+results[,3] = marker_links 
+
+signif_neargene_file = paste(workfolder, signif_neargene_file, sep ="/")
+if(file.exists(signif_neargene_file)) { 
+  signif_near_genes = get(load(signif_neargene_file))   
+} else {
+  stop(paste("\n\n  ERROR (gwas_report.Rmd): File", signif_neargene_file, "not found.\n\n"))
+}
+if(length(signif_near_genes) != nrow(results)) stop(paste("\n\n  ERROR (gwas_report.Rmd): Inconsistent data", signif_neargene_file, "vs.", signif_file, "\n\n" )) 
+
+genes = unlist(lapply(signif_near_genes, `[[`, 1))                                             
+chromosomes = unlist(lapply(signif_near_genes, `[[`, 2))   
+starts = unlist(lapply(signif_near_genes, `[[`, 3)) 
+ends = unlist(lapply(signif_near_genes, `[[`, 4))
+urls = paste0("http://genome.ucsc.edu/cgi-bin/hgTracks?db=hg38&position=chr", chromosomes, ":", starts, "-", ends)    
+gene_links = paste('<a href="', urls ,'">', genes ,"</a>", sep="")  
+results = cbind(results, genes)
+results[,ncol(results)] = gene_links  
+
+results$P = signif(results$P, 4)  
+results$A1_FREQ = signif(results$A1_FREQ, 3)
+results$BETA = signif(results$BETA, 4)
+results$SE = signif(results$SE, 3)
+```
+<!-- need extra chunk for data table -->
+
+
+```{r signif_table, echo = FALSE, warning = FALSE}   
+datatable(results, filter = "top", class = 'cell-border stripe', escape = c(-2, -4, -11), width = 1200) %>% formatStyle('BETA', color = 'green') 
+```
+
+
+
