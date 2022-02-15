@@ -1,0 +1,17 @@
+
+
+<!-- Comparison of COJO and CLUMP reults. Child chunk for gwas_report.Rmd -->  
+
+
+## Comparison of the markers identified by COJO and by CLUMP 
+
+
+```{r compare_cojo_clump, echo = FALSE, warning = FALSE} 
+nr_intersect = length(intersect(cojo_names, clump_names))
+perc_clump = round(nr_intersect/length(clump_names)*100,2) 
+perc_cojo = round(nr_intersect/length(cojo_names)*100,2)
+```
+
+ - The number of common markers indentified with the two methods is `r nr_intersect`. 
+ - This corresponds to <span style="color:blue">`r perc_clump` % </span> of the clump markers and <span style="color:blue">`r perc_cojo` % </span> of the cojo markers.
+

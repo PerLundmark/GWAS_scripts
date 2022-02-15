@@ -1,0 +1,229 @@
+---
+title: "Linkage between two markers"
+output:
+  html_document:
+    toc: true
+    theme: united
+    toc_float: false
+params:
+  workfolder: unknown
+  genoid: unknown
+  rawfile1: unknown
+  rawfile2: unknown
+  snp1: unknown
+  snp2: unknown
+  nr_obs1: 0
+  nr_obs2: 0
+  imput1: unknown
+  imput2: unknown
+  nr_imputed1: 0
+  nr_imputed2: 0  
+  histplot_imp1: unknown
+  histplot_imp2: unknown
+  histplot1: unknown
+  histplot2: unknown
+  form: unknown
+  metricfile: unknown
+  scatterplot: unknown
+  histplotres: unknown
+  qqplot: unknown
+---
+
+
+
+```{r, echo = FALSE}
+workfolder = params$workfolder
+genoid = params$genoid
+rawfile1 = params$rawfile1     
+rawfile2 = params$rawfile2     
+snp1 = params$snp1	
+snp2 = params$snp2	
+nr_obs1 = params$nr_obs1	
+nr_obs2 = params$nr_obs2	
+imput1 = params$imput1	
+imput2 = params$imput2
+nr_imputed1 = params$nr_imputed1
+nr_imputed2 = params$nr_imputed2	
+histplot_imp1 = params$histplot_imp1
+histplot_imp2 = params$histplot_imp2
+histplot1 = params$histplot1
+histplot2 = params$histplot2
+form = params$form
+metricfile = params$metricfile
+scatterplot = params$scatterplot
+histplotres = params$histplotres
+qqplot = params$qqplot	
+```
+
+<br>  
+
+
+
+```{r setup, echo = FALSE}
+library(knitr)
+library(DT, quietly = TRUE)
+```
+
+
+
+
+## Linear Regression 
+
+
+The linear regression model was:  
+
+<span style="color:blue">
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  `r form` 
+</span>
+
+The samples originate from the genotype dataset 
+with identifier <span style="color:blue">`r genoid`</span>, comprising `r prettyNum(nr_obs1, big.mark=".", decimal.mark=",")` observations.
+The extracted genotype datasets were stored in *`r rawfile1`* and *`r rawfile2`*, respectively.
+
+
+
+
+<br> 
+
+## Genotype vs. genotype plot
+
+
+```{r imputation, echo = FALSE, results = 'asis', warning = FALSE}
+if(imput1) {
+  cat(paste("  The marker", snp1, "contains", nr_imputed1, "imputed values.\n"))
+} else {
+  cat(paste(" Note that", snp1, "does not contain imputed values!\n"))   
+}
+
+if(imput2) {
+  cat(paste("  The marker", snp2, "contains", nr_imputed2, "imputed values.\n"))
+} else {
+  cat(paste(" Note that", snp2, "does not contain imputed values!\n"))    
+}
+```
+
+
+```{r, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, scatterplot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+
+<br> 
+
+
+
+
+## Some metrics obtained using `lm()`:
+
+- **sigma** is the estimatimated standard deviation of the noise term 
+- **Fstat** is the value of the F-statistic
+- **Rsquared** is coefficient of determination 
+- **Rsq.adj** is coefficient of determination adjusted for the number of predictors
+- **$\beta$** is the slope of the regression line
+- **CI_low** is the lower limit of the confidence interval for $\beta$
+- **CI_up** is the upper limit of the confidence interval for $\beta$
+
+```{r metrics, echo = FALSE, warning = FALSE} 
+# options(scipen = 999)
+results = get(load(metricfile))
+results = signif(results,3)  
+datatable(t(results), class = 'cell-border stripe', options = list(dom = 't'), rownames = FALSE) %>% formatStyle('Rsquared', color = 'green') 
+```
+
+<br> 
+
+
+
+
+##  Histogram for the genotype values
+
+
+```{r, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, histplot1, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+
+```{r, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, histplot2, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+
+
+
+
+##  Histogram for the imputed genotype values
+
+Note that some markers do not comprise imputed values.
+
+<br>
+
+```{r, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left', eval = imput1}
+plot = paste(workfolder, histplot_imp1, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+
+```{r, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left', eval = imput2}
+plot = paste(workfolder, histplot_imp2, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+
+
+
+
+##  Histogram for the magnitudes of the residuals
+
+According to the linear model established, the residuals should be normally distributed. 
+Consequently, the histogram below should approximately resemble a normal distribution.
+
+
+```{r, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, histplotres, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+
+
+
+
+
+## Normal Q-Q plot of the residuals
+
+This plot shows if residuals are normally distributed. 
+It is desirable that the points displaying the residuals are located close to the straight line.
+
+
+```{r qqplot, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, qqplot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br>  
+
+
+
+
+
+## Technical information / Help  
+ 
+<br>
+
+ - GWAS workfolder: `r workfolder`
+ - <uwe.menzel@medsci.uu.se>  
+ 
+<br> 
+

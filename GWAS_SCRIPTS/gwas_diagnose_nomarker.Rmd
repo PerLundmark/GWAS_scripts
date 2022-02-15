@@ -1,0 +1,443 @@
+---
+title: "GWAS Diagnostics"
+output:
+  html_document:
+    toc: true
+    theme: united
+    toc_float: false
+params:
+  workfolder: unknown
+  nr_observations: unknown
+  nr_predictors: unknown		 
+  vennplot: unknown
+  nr_common: unknown
+  datafile: unknown
+  form: unknown
+  residfile: unknown 
+  metricfile: unknown
+  lmfile: unknown
+  heatplot: unknown
+  viffile: unknown  
+  outlierfile: unknown
+  nr_outliers: unknown
+  nr_influencer: unknown
+  cookfile: unknown
+  histplot: unknown
+  histplot_pheno: unknown
+  ncv.p: unknown
+  residplot: unknown
+  qqplot: unknown
+  scaleplot: unknown
+  cooks_D_plot: unknown
+  cook.cutoff: unknown
+  residuals_leverage_plot: unknown
+  durbin.p: unknown
+  acfplot: unknown
+  responseplot: unknown
+  responsfile: unknown
+  irp_lambda: unknown  
+---
+
+
+
+
+<!---
+https://rmarkdown.rstudio.com/developer_parameterized_reports.html%23parameter_types%2F
+The declared parameters are automatically made available within the knit environment as components of a read-only list named params. 
+---> 
+
+
+
+```{r, echo = FALSE}
+workfolder = params$workfolder
+nr_observations = params$nr_observations
+nr_predictors = params$nr_predictors
+vennplot = params$vennplot
+nr_common = params$nr_common
+datafile = params$datafile
+form = params$form
+metricfile = params$metricfile
+residfile = params$residfile
+lmfile = params$lmfile
+heatplot = params$heatplot
+viffile = params$viffile
+outlierfile = params$outlierfile
+nr_outliers = params$nr_outliers
+nr_influencer = params$nr_influencer
+cookfile = params$cookfile
+histplot = params$histplot
+histplot_pheno = params$histplot_pheno
+ncv.p = params$ncv.p
+residplot = params$residplot
+qqplot = params$qqplot
+scaleplot = params$scaleplot
+cooks_D_plot = params$cooks_D_plot
+cook.cutoff = params$cook.cutoff
+residuals_leverage_plot = params$residuals_leverage_plot
+durbin.p = params$durbin.p
+acfplot = params$acfplot
+responseplot = params$responseplot
+responsfile = params$responsfile
+irp_lambda = params$irp_lambda
+```
+
+<br>  
+
+
+
+```{r setup, echo = FALSE}
+library(knitr)
+library(DT, quietly = TRUE)
+```
+
+
+
+
+
+
+
+## 1. Input data survey 
+
+
+The GWAS diagnose was conducted based on `r prettyNum(as.integer(nr_common), big.mark=".", decimal.mark=",")` observations 
+(which is the number of common samples for response variable and covariates, see Venn diagram below).
+
+
+<br> 
+
+
+### 1.1. Venn diagram based on sample ID's for phenotype, genotype, and covariates 
+
+
+The Venn diagram displays which samples are common to the response and predictor variables and the covariates.  
+
+```{r, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, vennplot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+
+
+
+### 1.2. Heatmap for predictor and covariate correlations 
+
+The heatmap indicates the strength of the correlations between the independent variables 
+(use the script *examine_covariates* to get detailed information).  
+
+<br>
+
+```{r, echo=FALSE, fig.cap="", out.width = '95%', fig.align='left'}
+plot = paste(workfolder, heatplot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+
+
+### 1.3. Variance inflation factors  
+
+Variance inflation factors (VIF) are calculated in order to discover multicollinearity.
+VIF  can be obtained by regressing a single independent variable against all other independent variables.
+As a rule of thumb, no variance inflation factor should be bigger than 10. 
+Otherwise, highly correlated variables should be removed from the model. 
+
+
+```{r vif, echo=FALSE, warning = FALSE}
+results = get(load(viffile))
+# results
+results$vif = signif(results$vif, 5)
+datatable(results, class = 'cell-border stripe', width = 200, options = list(dom = 't', pageLength = 25), rownames = TRUE)
+```
+
+<br> 
+<br> 
+
+
+
+
+
+## 2. Linear Regression results obtained using `lm()` in **R**
+
+<br> 
+
+### 2.1. Linear regression model:  
+
+<span style="color:blue">
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  `r form` 
+</span>
+
+
+<br>
+
+
+
+
+### 2.3. Some metrics obtained using `lm()`:
+
+- **sigma** is the estimatimated standard deviation of the noise term 
+- **Fstat** is the value of the F-statistic
+- **Rsquared** is coefficient of determination 
+- **Rsq.adj** is coefficient of determination adjusted for the number of predictors 
+- **CI_low** is the lower limit of the confidence interval for $\beta$
+- **CI_up** is the upper limit of the confidence interval for $\beta$
+- **AIC** is the Akaike information criterion (which estimates the quality of a gregession model, relative to others)
+
+```{r metrics, echo = FALSE, warning = FALSE} 
+# options(scipen = 999)
+results = get(load(metricfile))
+results$value = signif(results$value, 4)  
+datatable(t(results), class = 'cell-border stripe', options = list(dom = 't'), rownames = FALSE) 
+```
+
+<br> 
+
+
+### 2.4. Regression coefficients obtained with `lm()`:
+
+<br>
+
+```{r regression_R, echo=FALSE, warning = FALSE}
+results = get(load(lmfile))
+# results
+results = signif(results,3)
+datatable(results, class = 'cell-border stripe', width = 600, options = list(dom = 't', pageLength = 25), rownames = TRUE)
+```
+
+
+<br> 
+
+
+
+
+
+
+## 3. Diagnostic plots regarding the residuals 
+
+
+
+### 3.1.  Histogram for the magnitudes of the residuals and the phenotype 
+
+According to the linear model established, the residuals should be normally distributed. 
+Consequently, the histogram below should approximately resemble a normal distribution.
+The residuals have been saved to <span style="color:red"> `r residfile` </span>.
+
+
+```{r, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, histplot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+
+
+```{r, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, histplot_pheno, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+
+<br> 
+
+
+
+
+
+
+### 3.2.  Plot of the residuals vs. the fitted values 
+
+This plot shows if residuals have non-linear patterns (which should **not** be the case). 
+It is desirable that the residuals are equally spread around the horizontal line without distinct patterns.
+The p-value for the Non-constant Variance Score Test (**ncvTest** in **R**) is `r prettyNum(ncv.p, big.mark=".", decimal.mark=",")`. 
+
+```{r residuals_fitted, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, residplot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br>  
+
+
+
+### 3.3. Normal Q-Q plot of the residuals
+
+This plot shows if residuals are normally distributed. 
+It is desirable that the points displaying the residuals are located close to the straight line.
+
+
+```{r qqplot, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, qqplot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+
+<br>  
+
+
+
+### 3.4. Scale-Location plot
+
+The plot shows if residuals are spread equally along the ranges of predictors, 
+allowing to check the equal variance (**homoscedasticity**) assumption. 
+It is desirable that we see a horizontal line with equally (randomly) spread points.
+
+
+```{r scale, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, scaleplot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br>
+
+
+
+### 3.5.  Autocorrelation of the residuals
+
+The residuals should be independent according to the assumptions of the linear model applied. 
+This means that the autocorrelation for any lag should be small. It is therefore desirable that all
+vertical lines standing for the magnitudes of autocorrelation are well inside the blue dashed lines displayed in the plot. 
+The p-value for the **Durbin-Watson-Test** is `r prettyNum(durbin.p, big.mark=".", decimal.mark=",")`
+
+```{r acf, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, acfplot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br>
+
+
+
+
+
+## 4. Influential observations and outliers 
+
+
+
+### 4.1. Cook's distance  
+
+Cook's distance quantifies the influence of each observation on the regression results. 
+Cook's distance is inferred by recalculating the regression results after removal of a single observation from the input dataset. 
+It summarizes how much the results are changed when the observation is removed. 
+The cutoff for Cook's distance is <span style="color:red"> `r cook.cutoff` </span> 
+(calculated as the median of the F-distribution for `r nr_predictors` and `r format(nr_observations - nr_predictors, scientific = FALSE)` degrees of freedom). 
+According to this cutoff, we have `r nr_influencer` variables being influental. 
+
+
+```{r influence, echo = FALSE, warning = FALSE}
+if(file.exists(cookfile)) { 
+  results = get(load(cookfile))
+  if(is.data.frame(results)) {
+    results$Cook.D = signif(results$Cook.D,4)
+    datatable(results, class = 'cell-border stripe', width = 200, options = list(dom = 'tp'), rownames = FALSE)
+  }
+}  
+```
+
+
+<br> 
+
+
+```{r cooK_D, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, cooks_D_plot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+
+
+
+
+### 4.2.  Plot of the residuals vs. leverage
+
+The plot supports identification of influential observations. 
+Influential observations are located at the upper right or the lower right corner of this plot. 
+Cases outside the dashed line (Cook's distance) might be influential to the regression results. 
+i.e. the regression results will be altered if these observations are excluded from the model.
+( Note that the dashed line indicating Cook's distance may not be visible in the plot if all observations have
+a magninude of Cook's D which is below the cutoff.) 
+
+
+
+```{r lever, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+plot = paste(workfolder, residuals_leverage_plot, sep ="/") 
+knitr::include_graphics(plot)
+```
+
+<br>
+
+
+
+
+### 4.3. Outlier Test
+
+Outliers were calculated using the function **outlierTest** in **R**. 
+The number of hypothetical outliers obtained by this function was `r prettyNum(as.integer(nr_outliers), big.mark=".", decimal.mark=",")`.
+
+
+```{r outlier, echo = FALSE, warning = FALSE} 
+if(file.exists(outlierfile)) {
+  results = get(load(outlierfile))
+  results$rstudent = signif(results$rstudent, 3)
+  results$p.bonf = signif(results$p.bonf, 3)
+  if(is.data.frame(results)) {
+    datatable(results, class = 'cell-border stripe', width = 400, options = list(dom = 'tp'), rownames = FALSE)
+  }
+}   
+```
+
+<br> 
+
+
+
+
+
+## 5. Inverse response plot
+
+<br> 
+
+The inverse response plot displays the response variable (i.e. the phenotype) on the x-axis and the fitted values on the y-axis. 
+A relationship bettween these variables in the form $Y_{fitted} = \beta_0 + \beta_1 \cdot Y_{response}^\lambda$ is fitted by using
+the **nls** function in **R**. 
+The estimated $\lambda$ for the model considered here is `r prettyNum(irp_lambda, big.mark=".", decimal.mark=",")`                 
+
+
+```{r response, echo=FALSE, fig.cap="", out.width = '70%', fig.align='left'}
+if(file.exists(responseplot)) {
+  plot = paste(workfolder, responseplot, sep ="/") 
+  knitr::include_graphics(plot)
+} else {  
+  asis_output("  The inverse response plot could not be drawn using these regression results.\n\n")
+}
+```
+
+
+<br>
+
+
+
+
+
+
+## 7. Technical information / Help  
+ 
+<br>
+
+ - GWAS workfolder: `r workfolder`    
+ - <uwe.menzel@medsci.uu.se>   
+ 
+<br> 
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,81 @@
+
+<!-- Table with CLUMP reults. Child chunk for gwas_report.Rmd -->  
+
+
+
+## CLUMP results
+
+The plink-clump program was run using the following parameters:      
+
+ - primary $p$-value:      `r prettyNum(clump_p1, big.mark=".", decimal.mark=",")`          
+ - secondary $p$-value:    `r prettyNum(clump_p2, big.mark=".", decimal.mark=",")`    
+ - correlation threshold:  `r prettyNum(clump_r2, big.mark=".", decimal.mark=",")`    
+ - window size:  `r clump_kb` kb 
+ - reference genome: `r clump_refgen` 
+  
+
+<br>
+
+```{r clump_results, echo = FALSE, warning = FALSE, eval = clump_done}
+clump_file = paste(workfolder, clump_file, sep ="/")
+if(file.exists(clump_file)) {
+  results = get(load(clump_file))
+} else {
+  stop(paste("\n\n  ERROR (gwas_report.Rmd): File", clump_file, "not found.\n\n"))
+}
+results = results[,-7]  # redundant - remove 
+rownames(results) = 1:nrow(results)  
+
+names = results[,1]                        # all markers names 
+clump_names = names			   # find intersection with clump
+ind1 = grep("^rs", names)                  # rs names               
+ind2 = grep("^rs", names, invert = TRUE)   # other names   
+
+underscore_pos = as.integer(regexpr("_", names[ind1], fixed = TRUE))   
+names[ind1] = ifelse(underscore_pos > 0, substr(names[ind1], 1, underscore_pos - 1), names[ind1]) # rs1234567_A_C ==> rs1234567 
+urls = paste0("http://www.phenoscanner.medschl.cam.ac.uk/?query=", names, "&catalogue=GWAS&p=1e-5&proxies=None&r2=0.8&build=37")  
+
+pheno_links = character(nrow(results))
+pheno_links[ind1] = paste0('<a href="', urls[ind1] ,'">', names[ind1] ,"</a>")
+pheno_links[ind2] = names[ind2]     
+results[,1] = pheno_links                   # use DT:datatable with escape = -2
+
+chroms = results[,2]
+positions = results[,3]
+p1 = positions - 2000  
+p2 = positions + 2000
+urls = paste0("http://genome.ucsc.edu/cgi-bin/hgTracks?db=hg38&position=chr", chroms, ":", p1, "-", p2)
+marker_links = paste('<a href="', urls ,'">', positions ,"</a>", sep="")
+results[,3] = marker_links 
+
+clump_neargene_file = paste(workfolder, clump_neargene_file, sep ="/")
+if(file.exists(clump_neargene_file)) { 
+  clump_near_genes = get(load(clump_neargene_file))   
+} else {
+  stop(paste("\n\n  ERROR (gwas_report.Rmd): File", clump_neargene_file, "not found.\n\n"))
+}
+if(length(clump_near_genes) != nrow(results)) stop(paste("\n\n  ERROR (gwas_report.Rmd): Inconsistent data", clump_neargene_file, "vs.", clump_file, "\n\n" )) 
+
+genes = unlist(lapply(clump_near_genes, `[[`, 1))                                             
+chromosomes = unlist(lapply(clump_near_genes, `[[`, 2))   
+starts = unlist(lapply(clump_near_genes, `[[`, 3)) 
+ends = unlist(lapply(clump_near_genes, `[[`, 4))
+urls = paste0("http://genome.ucsc.edu/cgi-bin/hgTracks?db=hg38&position=chr", chromosomes, ":", starts, "-", ends)    
+gene_links = paste('<a href="', urls ,'">', genes ,"</a>", sep="")  
+results = cbind(results, genes)
+results[,ncol(results)] = gene_links  
+
+results$P = signif(results$P, 4)  
+results$A1_FREQ = signif(results$A1_FREQ, 3)
+results$BETA = signif(results$BETA, 4)
+results$SE = signif(results$SE, 3)
+```
+
+<!-- need extra chunk for data table -->
+
+```{r clump_table, echo = FALSE, warning = FALSE, eval = clump_done}   
+datatable(results, filter = "top", class = 'cell-border stripe', escape = c(-2, -4, -11), width = 1200) %>% formatStyle('BETA', color = 'green') 
+```
+
+
+
