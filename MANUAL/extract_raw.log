@@ -1,0 +1,97 @@
+
+
+  Thu Jun 10 09:41:03 CEST 2021
+  Account: sens2019016
+  Operated by: umenzel
+  Logfile: extract_raw.log
+
+  Sample list: samples.txt
+  Marker list: SNP_list.txt
+  Output filename prefix: SNP_out
+  Chromosome(s) to search: 1-22
+  Genotype input folder: /proj/sens2019016/GENOTYPES/PGEN_ORIG
+  Genotype identifier:  ukb_imp_v3
+
+  All required genotype files (.pgen, .pvar, .psam) are available.
+
+
+  Rawfiles:
+
+  *** Chromosome 1 ***
+    Output file: SNP_out_chrom1.raw
+    Number of hits: 1
+
+  *** Chromosome 2 ***
+    Output file: SNP_out_chrom2.raw
+    Number of hits: 1
+
+  *** Chromosome 3 ***
+    Output file: SNP_out_chrom3.raw
+    Number of hits: 1
+
+  *** Chromosome 4 ***
+    Output file: SNP_out_chrom4.raw
+    Number of hits: 1
+
+  *** Chromosome 5 ***
+    No hits on chromosome 5
+
+  *** Chromosome 6 ***
+    Output file: SNP_out_chrom6.raw
+    Number of hits: 1
+
+  *** Chromosome 7 ***
+    No hits on chromosome 7
+
+  *** Chromosome 8 ***
+    Output file: SNP_out_chrom8.raw
+    Number of hits: 1
+
+  *** Chromosome 9 ***
+    No hits on chromosome 9
+
+  *** Chromosome 10 ***
+    Output file: SNP_out_chrom10.raw
+    Number of hits: 2
+
+  *** Chromosome 11 ***
+    No hits on chromosome 11
+
+  *** Chromosome 12 ***
+    No hits on chromosome 12
+
+  *** Chromosome 13 ***
+    No hits on chromosome 13
+
+  *** Chromosome 14 ***
+    No hits on chromosome 14
+
+  *** Chromosome 15 ***
+    Output file: SNP_out_chrom15.raw
+    Number of hits: 1
+
+  *** Chromosome 16 ***
+    No hits on chromosome 16
+
+  *** Chromosome 17 ***
+    No hits on chromosome 17
+
+  *** Chromosome 18 ***
+    No hits on chromosome 18
+
+  *** Chromosome 19 ***
+    Output file: SNP_out_chrom19.raw
+    Number of hits: 1
+
+  *** Chromosome 20 ***
+    No hits on chromosome 20
+
+  *** Chromosome 21 ***
+    No hits on chromosome 21
+
+  *** Chromosome 22 ***
+    No hits on chromosome 22
+
+
+  Total number of hits (all chromosomes): 10
+

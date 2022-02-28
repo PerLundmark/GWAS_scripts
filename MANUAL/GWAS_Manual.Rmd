@@ -1,0 +1,2711 @@
+--- 
+title: "The GWAS pipeline"
+author: "Uwe Menzel"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    theme: united
+    toc_float: false
+    toc_depth: 4
+---
+
+
+
+<style>
+body {
+text-align: justify}
+</style>
+
+<style type="text/css">
+.table {
+    width: 100%;
+}
+</style>
+
+
+
+```{r workfolder, echo = FALSE}
+workfolder = "C:/Users/uwemenze/Desktop/GWAS/Manual"
+```
+
+
+[uwe.menzel@medsci.uu.se](mailto:uwe.menzel@medsci.uu.se)
+<br>
+
+
+
+# Introduction   {#introduction}
+
+The program pipeline conducts a **Genome Wide Association Study**
+([GWAS](https://www.genome.gov/about-genomics/fact-sheets/Genome-Wide-Association-Studies-Fact-Sheet)). 
+It runs a linear or logistic regression in order to identify genetic variants being associated with 
+a quantitative or a binary trait.
+The pipeline also includes two methods ([GCTA-COJO](https://cnsgenomics.com/software/gcta/#COJO) 
+and [PLINK-CLUMP](http://zzz.bwh.harvard.edu/plink/clump.shtml)) for the identification of independent genetic variants,
+i.e. variants which are in [linkage equilibrium](https://en.wikipedia.org/wiki/Linkage_disequilibrium). 
+
+The pipeline consists of [Bash shell scripts](https://www.gnu.org/software/bash/)  and [R scripts](https://www.r-project.org/). 
+Some R-scripts make also use of [Rmarkdown](https://rmarkdown.rstudio.com/) documents for reporting and visualization of results. 
+
+The main programs of the pipeline are automatically sent to 
+the **SLURM** ("Simple Linux Utility for Resource Management") [workload manager](https://slurm.schedmd.com/documentation.html) when they are started.
+After submission, jobs can be traced using the command
+
+    squeue   
+    
+This command displays job number, job name, job status, and elapsed time.
+A job (or all jobs connected to your login name) can be canceled using
+
+    scancel jobnumber
+    scancel -u username
+
+Some scripts can be run in an interactive session 
+which can be started on the Linux console 
+using the [interactive](https://www.uppmax.uu.se/support/user-guides/slurm-user-guide/) command, e.g.:
+
+    interactive -n 16 -t 6:00:00 -A sens2019016 
+
+This exemplary command requests a whole node (16 cores) for 6 hours. 
+
+You should always run large programs not being sent to the **SLURM** in interactive mode, because
+running in the login node might slow down computation rate substantially.
+Only a few (auxiliary) scripts can be run in the login node; if so, a notification is added to the program description.
+
+R scripts only work correctly if the corresponding modules are loaded. 
+The vast majority of the scripts loads the modules automatically. 
+Only a few (less important) scripts require manual loading. For these scripts, please run
+
+    module load R_packages/3.6.1 
+    
+before starting the R script. If you forget to load the module, you will 
+probably be notified that some R-libraries cannot be supplied.
+It may also be important to load just the *release 3.6.1* of the R-modules because newer releases might not be compatible with the scripts written.
+
+Many programs of the pipeline require submission of numerous parameters. 
+Parameters that are not likely to change very often are stored in so called *"settings files"* &thinsp; in order to reduce typing. 
+The *settings files*  are read by the associated program at startup.
+They  must be located in your home folder, see the [installation instructions](#inst) and the description 
+of the [settings files](#setfiles).
+You can edit these files to change the parameters permanently, but please
+stick to [Bash syntax](https://ss64.com/bash/syntax.html) in the files with suffix *.sh*  
+and to [R syntax](https://cran.r-project.org/doc/manuals/r-devel/R-lang.html) in the files with suffix *.R*. 
+
+Parameters that presumably change more often or have to be unique *must* be entered on the command line. 
+Some parameters defined in the settings files but can also be entered on the command line.
+As a general rule, parameters provided on the command line override definitions in the settings files.
+
+If a program name is typed without parameters, a concise message showing the command line parameters is displayed. 
+
+The main programs use named parameters of the form *-&thinsp;-arg value* or *-a value*. That means that you can
+use the short argument identifier (starting with a single minus sign) or the long argument name (starting with two minus signs).
+See the examples [below](#typical_session) for clarification.
+Other scripts (often R-scripts) use positional parameters. 
+It is important for these programs to enter the parameters in the correct order.
+
+It is **important** to emphasize that the pipeline uses sensitive data originating from the [UK Biobank](https://www.ukbiobank.ac.uk/).
+It is therefore **not allowed** to share these data with researchers who are not registered with UK Biobank.
+In particular, data containing ID's of the participating individuals must not be copied from the server to any other storage device.
+See this UK Biobank  [website](https://www.ukbiobank.ac.uk/enable-your-research/register) for more information.
+
+<br>
+
+
+
+# Installation  {#inst}
+
+The following commands have to be carried out just once.   
+
+Add the following lines of code to the file *.bashrc* &nbsp; which is located in your home directory :
+  
+    export SCRIPT_FOLDER="/proj/sens2019016/GWAS_SCRIPTS"
+    PATH=$SCRIPT_FOLDER:$PATH 
+
+The SCRIPT_FOLDER environment variable defines the location of the scripts.    
+General information regarding *.bashrc* &nbsp; files can be found on this [web site](https://www.gnu.org/software/bash/manual/html_node/Bash-Startup-Files.html). 
+ 
+ 
+Replace the above project name with your genuine project identifier. Source the *~/.bashrc* &nbsp; after finishing the changes :
+ 
+     source ~/.bashrc
+
+Copy all files located in the folder */proj/sens2019016/DEFAULT_SETTINGS* to your home folder (which can be addressed using a tilde: **~**):
+
+    cd /proj/sens2019016/DEFAULT_SETTINGS 
+    cp -i *.sh *.R ~/ 
+    
+These files are labelled "**settings files**" throughout this document. More about the settings files can be found [here](#setfiles).  
+
+<br>
+
+
+
+    
+# Settings files {#setfiles}   
+ 
+Settings files store program parameters and are sourced by scripts at startup, so that there is no need to invoke these parameters 
+on the command line. 
+
+A typical "settings file" looks like that:
+
+```{r, echo=FALSE, fig.cap="The settings file for run_gwas", out.width = '100%', fig.align='left'}
+graph="gwas_settings.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+<br>
+
+Different settings files provide input parameters for different programs: 
+
+Settings file             |        Programs reading that file
+--------------------------|----------------------------------------------------------------------------------------
+gwas_settings.sh          | run_gwas.sh ; gwas_chr.sh ; run_gwas_single.sh
+cojo_settings.sh          | run_cojo.sh ; cojo_pheno ; cojo_convert.sh; cojo_chr.sh ; cojo_collect.sh ; cojo_clean.sh   
+clump_settings.sh         | run_clump.sh ; clump_pheno.sh ; clump_chr.sh  
+review_settings.sh        | review_gwas.sh 
+review_settings.R         | review_gwas.R    
+archive_settings.sh       | archive_gwas.sh ; retrieve_gwas.sh ; tar_gwas.sh ; untar_gwas.sh   
+convert_settings.sh       | convert_genotype.sh ; convert_genotype_chr.sh  
+diagnose_settings.sh      | gwas_diagnose.sh ; gwas_diagnose_INT.sh ;gwas_diagnose_nomarker.sh ;extract_genotype.sh 
+~~diagnose_settings.R~~   | *deprecated*
+extract_settings.sh       | extract_samples.sh ; extract_samples_chr.sh ; extract_snps.sh ; extract_snps_chr.sh
+remove_settings.sh        | remove_samples.sh ; remove_samples_chr.sh
+extract_raw_settings.sh   | extract_raw.sh  
+fetch_settings.sh         | fetch_pheno.sh 
+linkage_settings.sh       | linkage_pair.sh  
+stats_settings.sh         | get_stats.sh  
+
+Note that the scripts are always called without the corresponding suffix because
+softlinks have been created, e.g.
+
+    ln -s run_gwas.sh run_gwas
+    
+As a consequence, you can just call "*run_gwas*" instead of "*run_gwas.sh*".  
+
+Changes in the settings files can be made to adapt to your needs.
+However, it is important to stick to [bash syntax](https://ss64.com/bash/) in the settings files with suffix *.sh* 
+and to [R syntax](https://en.wikipedia.org/wiki/R_(programming_language)) in the settings files with suffix *.R*.
+Text following a hashtag (#) is a comment and is irrelevant for the code. Feel free to add your own comments. 
+
+
+<br>
+
+
+
+
+# Input verification   {#verification}
+
+Most of the scripts conduct a number of checks in order
+to make sure that the input is correct before starting the program (sending it to the SLURM).
+
+Validation is made regarding:
+
+  - Correct format of input characters (e.g. chromosome numbers)
+  - Availability of input files (genotype files, phenotype files, covariate files, ...)
+  - Availability of sufficient disk space (the minimum required disk space is defined in the associated settings file)
+  - Correct phenotype and covariate names (which must be column names of the phenotype or covariate files)
+
+In case of any inconsistency, an *ERROR* message is shown containing script name and failure description.  
+Moreover, the auxiliary program *check_file* can examine if a file is correctly formatted.
+
+<br>
+
+
+# GWAS pipeline
+
+
+### Workflow    {#workflow} 
+
+An overall of the workflow is shown in the scheme below. 
+The most important part is the linear or logistic regression conducted by the script *run_gwas* (and it's subprograms).
+You can traverse the pipeline along some path indicated by the red arrows. 
+For instance, you can just run the regression and then immediately proceed to *review_gwas* in order to get a visual summary
+of the regression results. Alternatively, you can squeeze in GCTA-COJO or PLINK-CLUMP (or both) in order to identify markers which are in linkage equilibrium.
+
+
+<br>
+
+```{r, echo=FALSE, out.width = '80%', fig.align='center'}
+graph="Pipeline_workflow.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+Each of the programs calls a number of sub-programs (e.g. for each phenotype and for each chhromosome), see [below](subprograms). 
+
+
+<br>
+
+
+### Regression: PLINK2.0  {#run_gwas} 
+
+The linear or logistic regression is conducted using [PLINK2.0](https://www.cog-genomics.org/plink/2.0/). 
+
+
+#### <span style="color:blue"> Parameters </span> 
+
+The name of the main script running the regression is *run_gwas*, which has the following command line parameters:
+
+<br>
+
+```{r, echo=FALSE, fig.cap="Command line options for run_gwas", out.width = '80%', fig.align='left'}
+graph="run_gwas.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+The screenshot shows what you see if the program name is typed without any parameter.
+
+
+<br>
+
+
+Parameter    |     Description                            | Variable name   | Default value
+-------------|--------------------------------------------|-----------------|---------------------
+id           | job identifier                             | ident           |  none   
+phenofile    | phenotype file                             | phenofile       |  none
+phenoname    | phenotype name                             | phenoname       |  none 
+phenofolder  | phenotype file location                    | phenofolder     | ~/gwas_settings.sh
+covarfile    | covariate file name                        | covarfile       | ~/gwas_settings.sh
+covarname    | names of covariates to include             | covarname       | ~/gwas_settings.sh
+genoid       | genotype file identifier                   | genoid          | ~/gwas_settings.sh
+chr          | chromosomes                                | chrom           | ~/gwas_settings.sh
+maf          | threshold for minor allele frequency       | maf             | ~/gwas_settings.sh
+mac          | threshold for minor allele count           | mac             | ~/gwas_settings.sh
+vif          | maximum allowed variance inflation factor  | vif             | ~/gwas_settings.sh
+hwe          | p-value threshold for HWE test             | hwe_pval        | ~/gwas_settings.sh
+mr2          | allowed MACH-r2 imputation quality range   | machr2          | ~/gwas_settings.sh
+geno         | maximum missing call rate for variants     | marker_max_miss | ~/gwas_settings.sh
+mind         | maximum missing call rate for samples      | sample_max_miss | ~/gwas_settings.sh
+minutes      | required runtime in minutes                | minutes         | ~/gwas_settings.sh
+ask          | ask for confirmation before start          | ask             | ~/gwas_settings.sh
+
+
+The 3rd column of the table ("*Variable name*") displays the variable names used internally in the scripts and in the settings file *~/gwas_settings.sh*.
+
+The minimum input consists of the job identifier ("*id*"), the phenotype file ("*phenofile*"), and the phenotype names ("*phenoname*").
+(As a rule, parameters without default values *must* be invoked on the command line.)
+Other parameters are sourced from the "settings file" *gwas_settings.sh*, but can be overwritten on the command line.
+Very few parameters are exclusively defined in the settings file, e.g. the PLINK2.0 version, see the table below.
+
+The job identifier is a character string which can be freely chosen. It serves for the identification of the project and
+for labeling of the output files. All output files will be stored in a folder with the same name as the identifier.
+The folder is automatically created by the script.
+
+The phenotype file must be in the format accepted by PLINK2.0, see the input file [description](#gwas_input). Each column 
+- except for the first two being reserved for Individual ID (**IID**) and Family ID (**FID**)) - represents a quantitative or a binary phenotype.
+
+The phenotype names must be column names of the phenoytype file (this is checked by the script). 
+Multiple phenotypes can be invoked as a comma-separated list, but be aware that submitting many phenotypes at once starts 
+many jobs in the *SLURM* simultaneously. (The number of jobs submitted is the number of phenotypes times the number of chromosomes invoked). 
+The phenotype file must be located in the folder defined by *phenofolder*.
+(If a dot is entered for *phenofolder*, the phenotype file must reside in the current folder, i.e. the folder the *run_gwas* is started from.)
+
+The file containing the covariates ("*covarfile*") must be in the format required by PLINK2.0, see the input file [description](#gwas_input). 
+Again, the first two columns must contain **IID** and **FID**, while all other columns represent a quantitative or a binary covariate.
+The  names of the covariates to be included must be column names of the covariate file (also checked by the script).
+The covariate file must be located in the same folder as the phenotype file (i.e. it must be located in the current folder if a dot
+was entered for the *phenofolder* variable).
+
+The *genoid* parameter specifies which genotype dataset is used as input. Only a few choices are possible, depending on the project you are working with. 
+In general, it should be sufficient to keep the definition which is pre-selected in *gwas_settings.sh*. 
+
+The script runs the regression on all chromosomes invoked for each phenotype simultaneously, if the necessary number of computing nodes is available.
+By default, all autosomes are included in the analysis (defined in *~/gwas_settings.sh*). 
+By changing the the *chr* parameter, a single chromosome or a (contiguous) range of chromosomes can also be analysed (e.g. 1-10 for the first 10 chromosomes).
+Up to now, only autosomes can be included in the regression (but this can be changed easily)
+
+Samples with a minor allele frequency below the threshold "*maf*" are discarded from the association study,
+likewise samples with a minor allele count below the threshold "*mac*". 
+Note that too low values of *maf* or *mac* can make the regression results unreliable.
+See also the PLINK manual regarding [filtering](https://www.cog-genomics.org/plink/1.9/filter#maf).
+Minor allele frequency and minor allele count are calculated based on the portion of samples included in the actual regression.
+This portion is the intersection of:
+
+  - samples included in the genotype file, 
+  - samples included in the phenotype file, and 
+  - samples included in the covariate file.
+  
+This implies that it is sufficient to filter one of these files, if filtering is intended. 
+For more information regarding filtering, check out the scripts [filter_samples](#filter_samples), [filter_pheno](#filter_pheno), or [filter_phenotype](#filter_pheno).  
+
+High variance inflation factors point to collinearity of two or more input variables, making the regression results unreliable.
+The maximum allowed variance inflation factor ("vif") in *run_gwas* is set to 10 by default, see the *~/gwas_settings.sh*.
+According to several sources, this number should not be exceeded, check [here](https://online.stat.psu.edu/stat462/node/180/) or [here](https://en.wikipedia.org/wiki/Variance_inflation_factor).
+However, the [PLINK website](https://www.cog-genomics.org/plink/2.0/assoc) says you should 
+"not be afraid to greatly increase the *-&thinsp;-vif* threshold after you have studied the problem 
+and confirmed that moderate multicollinearity does not interfere with your analysis".
+The older PLINK1.9 sets the vif threshold to 50 by default, see [here](https://www.cog-genomics.org/plink/1.9/assoc).   
+The regression is aborted with an error message if the calculated variance inflation factor exceeds the specified limit.
+If the regression fails because of high variance inflation, some of the independent variables (covariates) should be removed from the analysis. 
+Collinearity of the covariates can be investigated ab initio by using the auxiliary script [examine_covariates](#examine_covariates).
+
+PLINK checks for Hardy-Weinberg equilibrium of the allele frequencies using 
+the [Hardy-Weinberg Exact Test](https://www.cog-genomics.org/plink/2.0/filter#hwe).
+The $p$-value threshold ("hwe") is set to $p = 1.0\cdot 10^{-6}$ by default (*~/gwas_settings.sh*).
+The null hypothesis states that the allele frequencies are in Hardy-Weinberg equilibrium.
+Consequently, low $p$-values indicate a statistical significant deviation from the equilibrium, and the corresponding markers are excluded from the analysis.
+
+The *mr2* parameter tells PLINK the accepted [imputation quality range](https://www.cog-genomics.org/plink/2.0/filter#mach_r2_filter) 
+which is set to $0.8-2.0$ by default. 
+Imputation has been conducted using the [MaCH software package](https://onlinelibrary.wiley.com/doi/full/10.1002/gepi.20533).
+
+The *geno* parameter filters out markers with missing-call rates exceeding the provided value, 
+see the [PLINK manual](https://www.cog-genomics.org/plink/2.0/filter#missing).
+In a similar manner, the *mind* paramter filters out samples with missing-call rates above the defined threshold.
+Both thresholds are set to $0.1$. Note that the corresponding variable names (used in the script and in *~/gwas_settings.sh*)  
+are *marker_max_miss* and *sample_max_miss*, respectively, as documented in the table above.
+
+The *minutes* parameter specifies the requested runtime in minutes for each chromosome. If enough nodes are available, this is
+the approximate runtime of the whole job, because the chromosomes are run simultaneously. Too low values can lead to premature
+interruption of the regression, leading to unfinished output files (summary statistics). Therefore, it is important to check the
+logfiles for errors and warnings, as described below.
+
+The *ask* parameter can be set to "y" or "n". 
+When set to "y", the user is asked to confirm the invoked settings before the job is sent to the SLURM.   
+
+As already mentioned, a few parameters can only be set by editing the *~/gwas_settings.sh*:
+
+
+Parameter      |     Desription                | Variable name   | Default value
+---------------|-------------------------------|-----------------|-------------------------------
+plink_version  | PLINK program version         | plink_version   | plink2/2.00-alpha-2.3-20200124   
+partition      | partition (node or core)      | partition       | node
+minspace       | miniumum required disk space  | minspace        | 1.000.000.000 kB = 1 TB 
+
+
+The parameter *plink_version* specifies the release of PLINK2.0 used for the calculation.
+New plink versions can be downloaded [here](https://www.cog-genomics.org/plink/2.0/). 
+The *plink_version* parameter must then be modified accordingly.
+
+The program checks how much disk space is available in the current file system before starting the job, and
+compares it with the value defined for *minspace*. 
+The job terminates with an error message if the available disk space is below the defined limit.
+The actual value declared in the settings file (1 Terabyte) is quite generous.
+However, the limit should not be chosen too low because filling up the disk to the last byte can
+cause quite a lot of trouble.
+
+<br>
+
+
+
+
+
+####  <span style="color:blue"> Input files </span>      {#gwas_input}
+
+
+Three types of files must be available before a **GWAS** can be started:
+
+  - genotype files 
+  - phenotype files, and
+  - covariate files.  
+
+The genotype files have been prepared and are localized in the folder */proj/sens2019016/GENOTYPES* and */proj/sens2019570/GENOTYPES*, respectively.
+These folders have two subfolders *BED* and *PGEN*, containing genotype files in different formats:
+
+  - binary genotype format  (*.pgen*), see [here](https://www.cog-genomics.org/plink/2.0/formats#pgen)  
+  - binary biallelic format (*.bed*), see [here](https://www.cog-genomics.org/plink/2.0/formats#bed)
+
+Two different genotype file formats must be provided because different programs of the pipeline require different formats. 
+The *run_gwas* script uses the *pgen* files only.
+
+The phenotype file names are declared with the parameter *phenofile*, see above. 
+Phenotype files must be in the format requested by PLINK2.0, see the corresponding [description](https://www.cog-genomics.org/plink/2.0/input#pheno).
+In general, these files must at least have a column containing the Individual ID ("IID").
+In the pipeline presented here, the Family ID ("FID") column is also mandatory.
+
+A typical phenotype file with one quantitative trait looks like this (first 10 lines):
+
+```{r, echo=FALSE, fig.cap="A phenotype file", dpi=50, fig.align='left'}
+graph="phenotype_file.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+<br>
+
+Every column of the phenotype file (except for the first two) stands for a phenotype. The column names in the phenotype file must agree with
+the parameter invoked for *phenoname*. Multiple phenonames can be entered as a comma-separated list.
+
+It is important to note that binary phenotypes are expected to be encoded with particular integer numbers (1=control, 2=case, see this [site](https://www.cog-genomics.org/plink/2.0/input#pheno)).
+Missing values must be encoded with 0 or -9 (negative 9).
+
+If the input format is correct, the script detects automatically if a trait is quantitative or binary, and conducts a linear or logistic regression accordingly. 
+Quantitative and binary phenotypes can be combined in a single run of the pipeline.
+ 
+The covariate files must have a similar structure. There is a prepared covariate file ("*GWAS_covariates_PC40.txt*") available, 
+containing 45 covariates (age, age_squared, sex, array, height as well as 40 principal components created by PCA with regard to genetic relationship of the samples). 
+The file contains 337,466 samples (filtered for Caucasian ethnic background and absence of relatives in the database).
+
+The columns of both the phenotype file and covariate file must be tab-separated. 
+Input files for PLINK can be checked for accuracy before starting the pipeline using the script *check_file*, see the section [Auxiliary scripts](#aux).
+
+<br>
+
+
+
+
+
+####  <span style="color:blue"> Output files </span> {#gwas_output}
+
+The script *run_gwas* &thinsp; creates a number of output files [in the table, a star (**\***) stands for a string that depends on the chosen input parameters]: 
+
+File name pattern    |   Description  
+---------------------|-------------------------------------------------------------------
+\*.glm.linear        | summary statistics after linear regression, for each chromosome  
+\*.glm.logistic      | summary statistics after logistic regression, for each chromosome 
+\*_gwas.log          | main logfile 
+\*_gwas_chrom\*.log  | chromosome-specific logfile 
+\*_gwas_signif.txt   | text file containing all genome-wide significant markers 
+\*_gwas_params.txt   | parameter file 
+\*.Rdata             | binary data files storing regression results, to be used in subsequent scripts
+
+
+The summary statistics files contain the results of the linear or logistic regression, including the slopes of the regression lines ($\beta$), $p$-values, standard errors, as well as 
+effect and alternate alleles and their corresponding frequencies. 
+
+The "parameter file" contains the parameters chosen on command line or read from the settings file. This information can be used to reproduce the pipeline run.
+The file is especially important because the information therein is also used by subsequent scripts in the pipeline.
+
+As mentioned above, all output files created in a single run of the pipeline are stored in a separate folder, having the same name as the job identifier chosen.
+The *gwas_settings.sh*, the covariate file and the phenotype file are also copied to this folder, in order to make the pipeline run reproducible.  
+
+If only genome-wide significant markers are needed (e.g. for Mendelian Randomization), the results obtained so far should be sufficient. 
+The scripts *merge_gwas_results* or *concat_gwas_results* can be used to concatenate the regression results obtained for the individual chromosomes, see the section ["Auxiliary scripts"](#aux). 
+If the regression results must be inspected in detail, the script *review_gwas* can be run, see the corresponding [description](#review_gwas). 
+
+The logfiles combine information created by *run_gwas* (or it's sub-programs) with the complete logfile created by PLINK2.0.
+
+<br>
+
+
+
+
+####  <span style="color:blue"> Checking accuracy </span>  {#gwas_check}
+
+It is recommended to check if the regression step was executed without failure before proceeding with the next steps of the pipeline.
+Therefore, it is useful to search all logfiles in the results-folder for errors or warnings by using the following Linux commands:
+
+    fgrep -i error *.log
+    fgrep -i warning *.log
+    
+The *-i* option stands for *ignore case*, ensuring that also phrases like "*ERROR*" or "*Error*" are detected. 
+If these commands yield no output, the regression step was most likely successful.
+
+A frequently occuring "error" is exceedance of the requested runtime. 
+In that case, the job can be restarted with a higher runtime claim (increased *minutes*-parameter).
+
+It is also possible to repeat the regression for a single chromosome using the script *run_gwas_single*. 
+This should be preferred over conducting *run_gwas* for that chromosome, because it can be started
+in the existing results-folder, and adds the results to the existing ones, 
+while *run_gwas*, performed for a single or a few chromosomes, creates a new folder to store the results.
+
+If a more rigorous validation is intended, the script  *check_gwas* can be executed, see [here](#check_gwas) for details.   
+This program also checks if the results are complete, so that aborted jobs can be identified. 
+Additionally, the script considers the dates of the logfiles, in order to exclude obsolete files.
+
+<br>
+
+
+
+####  <span style="color:blue"> Subprograms </span>   {#subprograms}
+
+
+The script *run_gwas* calls the script *gwas_chr* which performes the regression step for a single chromosome and for all phenotypes entered.  
+The individiual chromosomes are sent to the SLURM simultaneously if enough resources are available.
+
+<br>
+
+
+####  <span style="color:blue"> Examples </span>   {#gwas_examples} 
+
+
+The following exemplary command provides the minimal set of command line parameters that have to be entered:
+ 
+    run_gwas --id Test --phenofile liver_fat.txt  --phenoname liver1
+
+All other program parameters are taken from *~/gwas_settings.sh*.
+
+When launched as shown in the example, the *run_gwas* script automatically creates s folder names "*Test*" in the current directory. 
+All output of the pipeline is then stored in this folder. 
+The file "liver_fat.txt" must reside in the location declared by the parameter *phenofolder*. 
+This file must have a column named "*liver1*" (in addition to the "#FID" and "IID" columns).
+
+It is also possible to use the short version of the formal parameters, so that
+
+    run_gwas -i Test  -p liver_fat.txt  -pn liver1
+
+would submit exactly the same job.
+
+Often, jobs terminate halfway because the runtime limit was exceeded. In that case, the job can be restarted with a modified runtime claim:
+
+    run_gwas --id Test1  --phenofile liver_fat.txt  --phenoname liver1 --minutes 180
+
+which would request 3 hours runtime for each chromosome.
+
+Note that you have to choose another identifier (*-&thinsp;-id* &thinsp;) if the job is restarted. 
+Otherwise, *run_gwas* exits with an error message in order to prevent removal of finished GWAS runs by accident.
+If you are sure that a GWAS run is obsolete, you can remove the existing folder with
+
+    rm -r Test 
+
+In general, be careful with the *rm* command, there is no such thing like a bin in UNIX/Linux. 
+Once a file or directory is removed, it cannot be recovered if no backup is available. 
+Check the UPPMAX [website](https://www.uppmax.uu.se/support/faq/resources-faq/backup-at-uppmax/) to see how the backup is organized. 
+
+If many covariate names are to be entered on the command line (overwriting the declarations in *~/gwas_settings.sh*),
+it is convenient to define a variable which stores the name string:
+
+    
+    cov="PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10,PC11,PC12,PC13,PC14,PC15,array,sex,age,height"
+    run_gwas --id Test  --phenofile liver_fat.txt  --phenoname $cov --minutes 180 --hwe 1.0e-20 
+    
+The token "$cov" in the command is replaced by the complete string defined by the upper command.
+The command above sets also the cutoff for the $p$-value calculated by the Hardy-Weinberg Test to $1.0 \cdot 10^{-20}$.
+
+<br> 
+
+
+ 
+
+
+### Linkage: GCTA-COJO  {#run_cojo} 
+
+The GCTA-COJO program identifies markers in linkage equilibrium ("independent markers") by analysing the summary statistics file
+(*\*.linear* and *\*.logistic*, respectively) generated by *run_gwas*.
+A description of the method can be found in this [article](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3593158/). 
+A detailed description of the software was given in this [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3014363/). 
+The corresponding website is [here](https://cnsgenomics.com/software/gcta/#COJO). 
+
+
+
+#### <span style="color:blue"> Parameters </span>   {#cojo_parameters}
+
+The main script conducting GCTA-COJO is *run_cojo*.
+In order to run the program, you must change to the directory created by *run_gwas*. 
+If the identifier was chosen to be "Test", as in the example above, this is accomplished by typing
+
+    cd Test
+  
+    
+The program *run_cojo* has the following command line parameters:
+
+
+```{r, echo=FALSE, fig.cap="run_cojo parameters", out.width = '80%', fig.align='left'}
+graph="run_cojo.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+
+<br>
+
+Parameter    |     Description                             | Variable name   | Default value
+-------------|---------------------------------------------|-----------------|---------------------
+id           | job identifier                              | ident           | none   
+phenoname    | phenotype name                              | phenoname       | all phenotypes run 
+pval         | p-value cutoff for genome-wide significance | pval            | ~/cojo_settings.sh
+window       | window for assumed linkage equilibrium      | window          | ~/cojo_settings.sh
+colline      | cutoff for collinearity ($R^2$)             | collinearity    | ~/cojo_settings.sh
+maf          | threshold for minor allele frequency        | maf             | ~/cojo_settings.sh
+minutes      | required runtime in minutes                 | minutes         | ~/cojo_settings.sh
+ask          | ask for confirmation before start           | ask             | ~/cojo_settings.sh
+keepma       | keep cojo input file                        | keepma          | ~/cojo_settings.sh 
+
+
+The job identifier ( *id* ) has to be the one used in *run_gwas*. It is checked by the script if the actual folder name agrees with this identifier. 
+If no phenotype name ( *phenoname* ) is entered on the command line, all phenotypes run through the regression by *run_gwas* will be considered.
+(The phenotype names are then taken from the parameter file described [above](#run_gwas).) 
+
+For the $p$-value defining genome-wide significance of a marker ( *pval* ), a default of $5.0 \cdot 10^{-8}$ is most frequently used. 
+That corresponds to a Bonferroni adjustment for multiple testing for one million markers.
+
+The parameter *window* tells the program at what distance (in Kb) a pair of markers is considered to be in complete linkage equilibrium.
+The default value is 5000, if not changed in *~/cojo_settings.sh*.
+
+The *colline* parameter controls how stringent collinearity between candidate markers is punished. 
+A marker is excluded if the $R^2$ calculated by multiple regression against the already chosen markers is bigger than the chosen value. 
+This is also explained [here](https://cnsgenomics.com/software/gcta/#COJO). 
+By default, the parameter is set to 0.9.
+
+<!--
+During the model selection procedure, the program will check the collinearity between the SNPs that have already been selected and a SNP to be tested. The testing SNP will not be selected if its multiple regression R2 on the selected SNPs is greater than the cutoff value. By default, the cutoff value is 0.9 if not specified
+-->
+
+By choosing the *maf* parameter, SNP's with a minor allele frequency lower than that value are excluded from the results.
+Often, this filtering is already performed in the regression step, see [above](#run_gwas). 
+
+The *minutes* parameter specifies the requested runtime per chromosome.
+
+The *ask* parameter can only be set to "y" or "n". 
+When set to "y", the user will be asked to confirm the chosen settings before the jobs are sent to the queue. 
+The default value is "y" (declared in *~/cojo_settings.sh*) because the number of jobs to submit might be very large, see below. 
+
+The parameter *keepma* tells the script to keep the input file for *run_cojo* after the program has been running, instead of deleting it. 
+This file is constructed on the basis of the GWAS output files (and has the suffix *.ma* ).
+Keeping that file is mainly important for debugging. 
+By default, the option is set to "n" because the file is quite big (about 500 MB).
+
+
+
+A few parameters cannot be changed on the command line but only by editing the *~/cojo_settings.sh* file:
+
+
+Parameter             |     Desription                             | Variable name   | Default value
+----------------------|--------------------------------------------|-----------------|---------------------------
+skip_chrom            | skip chromosomes without significant SNP's | same            |  1   
+sleep_between_pheno   | pause submission to SLURM                  | same            |  0
+partition             | requested partition (node or core)         | same            | node
+minspace              | miniumum required free disk space          | same            | 100.000.000 kB = 100 GB  
+cojo_convert_time     | required runtine for cojo_convert.sh       | same            | 20 minutes
+cojo_collect_time     | required runtine for cojo_collect.sh       | same            | 10 minutes 
+cojo_clean_time       | required runtine for cojo_clean.sh         | same            | 10 minutes
+alt_genoid            | genotype identifier for run_cojo           | same            | FTD_rand 
+
+
+The option *skip_chrom* tells the program that chromosomes having no significant hit or just one significant hit after regression are excluded from the analysis.
+( As a matter of course, if the chromosome has just one significant hit, this is the independent one! ) 
+The chromosome is also excluded if no or only one hit remains after *maf*-filtering (in case that option was chosen).
+If such a situation occurs, the user receives a message like that:
+
+<br>
+
+```{r, echo=FALSE, out.width = '100%', fig.align='left'}
+graph="cojo_skip_chrom.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+<br>
+
+or like that:
+
+<br>
+
+```{r, echo=FALSE, out.width = '100%', fig.align='left'}
+graph="cojo_skip_chrom_2.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+<br>
+
+When *sleep_between_pheno* is set to a non-zero value, the script pauses submission to the queue that many minutes between individual phenotypes (if multiple
+phenotypes were chosen). This option can be used to prevent overloading of the queue (*run_cojo* submits 25 jobs per phenotype, see below.  
+
+The *partition* parameter can either be "node" or "core". Most of the time, "node" is a better choice because considerably more CPU memory is provided
+when this option is chosen.
+For more information look [here](https://www.uppmax.uu.se/support/user-guides/slurm-user-guide/#tocjump_1777731700127163_5).
+
+The program checks how much disk space is available in the current file system before starting the job, and
+compares it with the value defined for *minspace*. It stops with an error message if the disk space is below the defined limit.
+The actual value declared in the settings file (100 GB) is quite generous.
+However, the limit should not be chosen too low because filling the disk up to the last byte can cause quite a lot of trouble.
+
+The parameters *cojo_convert_time*, *cojo_collect_time*, and *cojo_clean_time* declare runtime requests for some subprograms called by *run_cojo*.
+For details, see the sub-program [section](#cojo_subs).
+These are relatively small programs so that the defaults shown in the table above should be sufficient.
+
+In order to save CPU-time, *run_cojo* uses only a subset of the available genotype data as a reference sample  {#reference_dataset}
+when the parameter *alt_genoid* ("alternative genotype identifier") is defined. 
+In *~/cojo_settings.sh*, the default is set to *FTD_rand*, which refers to 10,000 individuals randomly chosen from a genotype dataset that was 
+filtered for Caucasian ethnic background and for absence of relatives in the dataset. 
+Note that *FTD_rand* does not contain all samples (individuals) but all variants in order to enable LD calculation.
+When the *alt_genoid* entry in *~/cojo_settings.sh* is outcommented, *run_cojo* uses the same genotype dataset as used in the regression step.
+(This genotype dataset is inferred from the parameter file mentioned before, see [above](#gwas_output). )
+More about the reference sample can be found [here](https://cnsgenomics.com/software/gcta/#COJO) or in the article by [Yang et al.](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3593158/). 
+
+<br>
+
+
+
+####  <span style="color:blue"> Input files </span>   {#cojo_infiles}
+
+No input files have to be declared for *run_cojo*. 
+The script reads the output files created during the regression step and converts them to the appropiate input format for *run_cojo*.
+Other necessary information is taken from the [parameter file](#gwas_output). 
+However, it is important to start the script in the folder containing the GWAS output.
+
+<br>
+
+####  <span style="color:blue"> Output files </span> {#cojo_output}
+
+The script *run_cojo* creates the following output files [a star (**\***) stands for a string which depends on input parameters]: 
+
+File name pattern             |   Description  
+------------------------------|-------------------------------------------------------------------
+\*_cojo.log                   | main logfile for a phenotype  
+\*_cojo_chrom\*.log           | chromosome-specific logfile
+\*_cojo_clean.log             | logfile for cojo_clean.sh
+\*_cojo_collect.log           | logfile for cojo_collect.sh
+\*_cojo_convert.log           | logfile for cojo_convert.sh 
+\*_cojo.jma                   | list of independent markers for a phenotype 
+\*_cojoed_markers.RData       | binary data file storing independent markers for a phenotype
+\*_cojoed_orig_markers.RData  | the same with original $\beta$ and $p$-values 
+\*_cojo_files.tar.gz          | some archived output files of minor importance
+
+The main results, containing the independent markers, are stored in the file ending on "\*_cojo.jma". 
+The *\*.RData* files contain information for subsequent scripts.
+
+GCTA-COJO adds further information to the [parameter file](#gwas_output) created in the regression step.
+
+<br> 
+
+
+####  <span style="color:blue"> Checking accuracy </span>
+
+
+Again, it is recommended to check if all parts of the pipeline were executed without failure so far before proceeding with the next steps.
+Therefore, it is useful to parse all logfiles in the results-folder for errors or warnings. 
+This can be accomplished by using the following Linux commands:
+
+    fgrep -i error *.log
+    fgrep -i warning *.log
+    
+The *-i* option stands for *ignore case*, ensuring that also phrases like "*ERROR*" or "*Error*" are detected. 
+If these commands yield no output, the regression step was most likely successful.
+If exactly launched as displayed above, the command checks the logfiles created in the regression step, too.
+
+A frequently occuring error is runtime limit exceedance, especially for the chromosomes harboring many markers (e.g. chromosome 2). 
+In that case, the job must be restarted with a higher runtime claim, by scaling up the *minutes*-parameter.
+
+If a more rigorous check is to be done, the script  *check_gwas* can be executed, see some details [here](#check_gwas).
+This program checks also completeness of the results and considers the dates of the logfiles in order to exclude outdated files.
+
+<br>
+
+
+####  <span style="color:blue"> Subprograms </span>   {#cojo_subs}
+
+
+The script *run_cojo* calls  *cojo_pheno*, *cojo_convert*, *cojo_chr*, *cojo_collect*, and *cojo_clean* as shown in the graph: 
+
+<br>
+
+```{r, echo=FALSE, out.width = '80%', fig.align='center'}
+graph="cojo_scripts.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+The sub-program *cojo_convert* reformats the output of *run_gwas* to serve as input for *run_cojo*. 
+The *cojo_pheno* starts the jobs for a single phenotype, calling *cojo_chr* for all invoked chromosomes. 
+*cojo_collect* mainly combines the results for the individual chromsomes, while *cojo_clean*
+collects warnings and errors from all logfiles created, deletes some temporary files and 
+archives files with minor importance in order to save disk space. 
+
+Note that 25 jobs for each phenotype are submitted if all autosomes are analyzed. 
+Using the *sleep_between_pheno* option can unburden the server, because the submission is paused between the individual phenotypes,
+so that "only" 25 jobs are started at a time.
+
+The individual sub-programs started by *run_cojo* have several dependencies. 
+The script *cojo_convert* has to be finished before other sub-programs can be started, because *cojo_convert* provides the
+input files for the whole chain. 
+Furthermore, *cojo_collect* and *cojo_clean* can only be started at the end of the chain.
+Consequently, if you list your jobs running the *squeue* command, you'll notice that not all jobs can be started simultaneously:
+
+<br>
+
+```{r, echo=FALSE, out.width = '80%', fig.align='left'}
+graph="cojo_dependencies.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+As shown in the plot, the *cojo_convert*, labelled *CONVERT*, has already started (as indicated by the letter **R**) while all other sub-programs are flagged with "*Dependency*".
+
+
+
+<br>
+
+####  <span style="color:blue"> Examples </span>   {#cojo_examples}
+
+In order to run *GCTA-COJO*, you have to change to the folder containing the regression results.
+If the identifier was chosen to be "Test" in the regression step, this can be accomplished by typing
+
+    cd Test  
+    
+The minimal input of *run_cojo* could for instance be: 
+
+    run_cojo --id Test  
+    
+In that case, all phenotypes are treated that have been run through the regression step (data is taken from the [parameter file](#gwas_output)).
+
+In case you are interested in a subset of the phenotypes that have been running through regression, you can explicitly make a request for these phenotypes:
+
+    run_cojo --id Test --phenoname liver_fat,liver_size
+  
+This command includes two phenotypes only (but still uses 50 nodes or cores on the server!).
+
+Unfortunately, it will often be necessary to repeat the run with increased runtime request, because the job could not be finished timely.
+The runtime limit can be adjusted by modifying the *minutes* parameter:
+
+    run_cojo --id Test --phenoname liver_fat,liver_size --minutes 200  
+  
+Please keep in mind that you can also use the short version of the formal parameters, so that the last command can be replaced by:
+
+    run_cojo -i Test -pn liver_fat,liver_size -m 200
+
+The *minutes* parameter refers to the runtime for a chromosome. 
+
+There are more arguments which can be supplied to *run_cojo*, see the table [above](#cojo_parameters).
+Just type *run_cojo* without any argument in order to obtain a complete list of options. 
+Also, keep in mind that the default options can be changed by modifying the file *~/cojo_settings.sh*. 
+
+<br>
+
+
+
+
+### Linkage: PLINK-CLUMP   {#run_clump}
+
+An alternative approach to identify SNPs in linkage equilibrium ("independent markers") is **clumping**, performed by PLINK1.9.
+Clumping starts with markers having $p$-values (from regression) below a user-defined threshold (called "**index SNPs**") and creates clumps of all other markers that  
+
+  - are located within a certain window around the index SNP, and   
+  - are in linkage disequilibrium with the index SNP.
+  
+The linkage disequilibrium is evaluated based on an $R^2$-threshold.
+More details can be found [here](http://zzz.bwh.harvard.edu/plink/clump.shtml), some additional information is [here](https://www.cog-genomics.org/plink/1.9/postproc). 
+The basic PLINK article is by [Purcell et al.](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1950838/). 
+
+<br> 
+
+#### <span style="color:blue"> Parameters </span> {#clump_parameters}
+
+The main script running this algorithm is *run_clump* which has to be started inside the folder containing the regression results.
+If the identifier was chosen to be "Test" in the regression step, the following command changes to the appropiate folder:
+
+    cd Test
+   
+    
+The program *run_clump* has the following command line parameters:
+
+
+```{r, echo=FALSE, fig.cap="run_clump parameters", out.width = '80%', fig.align='left'}
+graph="run_clump.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+
+<br>
+
+Parameter    |     Description                             | Variable name   | Default value
+-------------|---------------------------------------------|-----------------|---------------------
+id           | job identifier                              | ident           | none   
+phenoname    | phenotype names                             | phenoname       | all phenotypes run 
+p1           | $p$-value cutoff for genome-wide significance | clump_p1        | ~/clump_settings.sh
+p2           | secondary significance threshold            | clump_p1        | ~/clump_settings.sh
+r2           | threshold for $R^2$ in LD calculation       | clump_r2        | ~/clump_settings.sh
+kb           | window for assumed linkage equilibrium      | clump_kb        | ~/clump_settings.sh
+minutes      | requested runtime in minutes                | minutes         | ~/clump_settings.sh
+
+
+The job identifier ( *id* ) has to be the same as used in *run_gwas*. 
+It is checked if the actual folder name agrees with this identifier. 
+If no phenotype name ( *phenoname* ) is entered on the command line, all phenotypes run through the regression by *run_gwas* will be considered
+(The phenotype names are then taken from the parameter file described [above](#run_gwas).)
+
+The parameter *p1* denotes the threshold for genome-wide significance, thus defining potential index SNPs. 
+The default value is $5.0 \cdot 10^{-8}$. 
+The parameter *p2* denotes the secondary significance threshold, with a default value of $5.0 \cdot 10^{-6}$.
+Markers within a clump will be explicitly listed in the output if their $p$-value is below the *p2*-threshold. 
+
+The [coefficient of determination](https://en.wikipedia.org/wiki/Coefficient_of_determination) ("variance explained", 
+$R^2$, parameter *r2* &thinsp;) is used as a measure for the linkage of a pair of markers. 
+Two markers are considered to be in linkage disequilibrium if the corresponding *r2* is above the defined value. 
+If two markers have a distance (in kilobases) bigger than the *kb* parameter, they are a priori considered to be in linkage equilibrium.   
+
+The following parameters cannot be changed on the command line but only by editing *~/clump_settings.sh* :
+
+
+Parameter             |     Desription                               | Variable name   | Default value
+----------------------|----------------------------------------------|-----------------|-------------------------------------
+genofolder            | location of the genotype files               | same            | /proj/sens2019016/GENOTYPES/BED
+sleep_between_pheno   | pause submission to queue                    | same            | 0
+partition             | requested partition (node or core)           | same            | node
+minspace              | miniumum required free disk space            | same            | 100.000.000 kB = 100 GB  
+plink_version         | plink 1.9 version used                       | same            | plink/1.90b4.9
+clump_collect_time    | requested runtine for clump_collect.sh       | same            | 10 minutes 
+alt_genoid            | alternative genotype identifier              | same            | FTD_rand 
+
+
+The *genofolder* parameter determines the location of the genotype data. 
+Because PLINK-CLUMP can only be used with PLINK version 1.9, 
+the genotype data must have *binary biallelic genotype* [format](https://www.cog-genomics.org/plink/1.9/formats#bed) (including .bed; .bim; .fam files).
+
+When *sleep_between_pheno* is set to a non-zero value, the script pauses submission to the queue that many minutes between individual phenotypes (if multiple
+phenotypes were chosen). This option can be used to prevent overloading of the server queue (*run_clump* submits 23 jobs per phenotype, see [below](#clump_subs)). 
+
+The *partition* parameter can either be "node" or "core". Most of the time, "node" is a better choice because considerably more CPU memory is provided
+when this option is chosen.
+For more information regarding memory management look [here](https://www.uppmax.uu.se/support/user-guides/slurm-user-guide/#tocjump_1777731700127163_5). 
+
+The program checks how much disk space is available in the current file system before starting the clump program, and
+compares it with the value defined for *minspace*. It stops with an error message if the disk space is below the defined limit.
+The actual value declared in the settings file *~/clump_settings.sh* (100 GB) is quite generous.
+However, the limit should not be chosen too low because filling the disk up to the last byte can cause quite a lot of trouble.
+
+The parameter *plink_version* specifies the release of PLINK1.9 used for the calculation. 
+New PLINK versions can be downloaded [here](https://www.cog-genomics.org/plink/). 
+The *plink_version* parameter must then be modified accordingly.
+Keep in mind that clumping can only be performed using (the older) [PLINK1.9](https://www.cog-genomics.org/plink/).
+
+The parameter *clump_collect_time* declares the requested runtime for the subprogram *clump_collect.sh*. 
+This is a relatively small program so that the default shown in the table above should be sufficient.
+
+In order to shorten runtime, *run_clump* can use a subset of the available genotype data as a reference sample.  
+This is determined by the parameter *alt_genoid* ("alternative genotype identifier").   
+In *~/clump_settings.sh*, the default is set to *FTD_rand*, which refers to 10,000 individuals randomly chosen from a genotype dataset that was 
+filtered for Caucasian ethnic background and for absence of relatives in the dataset.
+Note that *FTD_rand* does not contain all samples (individuals) but all variants in order to enable LD calculation.
+When the *alt_genoid* entry in *~/clump_settings.sh* is outcommented, *run_clump* uses the same genotype dataset as used in the regression step.
+(This genotype dataset is inferred from the parameter file created in the regression step, see [above](#gwas_output). )
+Additional information regarding the reference dataset can be found on the [plink1.9 website](http://zzz.bwh.harvard.edu/plink/clump.shtml). 
+
+<!-- https://bioinformatics.stackexchange.com/questions/2742/plink-clump-behavior-on-missing-snps --> 
+
+<br>
+
+
+
+
+
+####  <span style="color:blue"> Input files </span>   {#clump_infiles}
+
+No input files have to be declared for *run_clump*. 
+The script reads the output files created during the regression step and converts them to the appropiate input format for *run_clump*.
+Other necessary information is taken from the [parameter file](#gwas_output). 
+However, as already mentionend, it is important to start the script in the folder containing the GWAS output files ("\*.linear" or "*.logistic").
+
+<br>
+
+
+####  <span style="color:blue"> Output files </span> {#clump_output}
+
+The script *run_clump* creates the following output files [a star (**\***) stands for a string which depends on input parameters]: 
+
+File name pattern             |   Description  
+------------------------------|-------------------------------------------------------------------
+\*_clump.log                   | main logfile for a phenotype  
+\*_clump_chrom\*.log           | chromosome-specific logfile
+\*_clump_collect.log           | logfile for clump_collect.sh
+\*_clump.jma                   | list of independent markers for a phenotype 
+
+The main results, containing the independent markers, are stored in a file ending on "\*_clump.jma". 
+(The suffix *.jma* is chosen to harmonize with the main GCTA-COJO output.)
+
+PLINK_CLUMP adds further information to the [parameter file](#gwas_output) created in the regression step.
+
+<br> 
+
+
+####  <span style="color:blue"> Checking accuracy </span>
+
+
+Again, it is recommended to check if all parts of the pipeline were executed without failure so far before proceeding with the next steps.
+Therefore, it is useful to parse all logfiles in the results-folder for errors or warnings. 
+This can be accomplished by using the following Linux commands:
+
+    fgrep -i error *.log
+    fgrep -i warning *.log
+    
+The *-i* option stands for *ignore case*, ensuring that also phrases like "*ERROR*" or "*Error*" are detected. 
+If these commands yield no output, the regression step was most likely successful.
+If exactly launched as displayed above, the command also checks the logfiles created in the regression step and in the GCTA-COJO step (if conducted).  
+
+The following warning can be ignored: "*No significant -&thinsp;-clump results.  Skipping*". 
+It means that the corresponding chromosome didn't harbor any genome-wide significant hit.
+
+A frequently occuring error is runtime limit exceedance, especially for the chromosomes harboring many markers (e.g. chromosome 2). 
+In that case, the job must be restarted with a higher runtime claim, by scaling up the *minutes*-parameter.
+
+If a more rigorous check is to be done, the script *check_gwas* can be executed, see some details [here](#check_gwas).
+This program checks also completeness of the results and considers the dates of the logfiles in order to exclude outdated files.
+
+<br>
+
+
+####  <span style="color:blue"> Subprograms </span>   {#clump_subs}
+
+
+The script *run_clump* calls the subprograms  *clump_pheno*, *clump_chr* , and *clump_collect* as shown in the graph: 
+
+<br>
+
+```{r, echo=FALSE, out.width = '80%', fig.align='center'}
+graph="clump_scripts.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+The script *clump_pheno* starts the jobs for a single phenotype, calling *clump_chr* for all chromosomes to be considered. 
+*clump_chr* is the script that calls the PLINK program.
+The subprogram *clump_collect* combines the results for the individual chromsomes.
+
+Note that 23 jobs for each phenotype are submitted if all autosomes are analyzed. 
+Using the *sleep_between_pheno* option can unburden the server, because the submission is paused between the individual phenotypes,
+so that "only" 23 jobs are started at a time.
+
+While the PLINK program is started simultaneously for the individual chromosomes (if enough nodes are available), 
+the sub-program *clump_collect*  must wait until all chromosomes are finished. 
+If you list your jobs running the *squeue* command, you will therefore notice that *clump_collect* is pending :
+
+
+<br>
+
+```{r, echo=FALSE, out.width = '80%', fig.align='left'}
+graph="clump_dependencies.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+<br> 
+
+As shown in the plot, the *clump_collect* script, labelled "CLMOCOLL", is flagged with "*Dependency*" 
+while the PLINK jobs on the individual chromsomes ("CLUMP-XX") are already running, as indicated by the letter **R**.
+
+
+
+<br>
+
+####  <span style="color:blue"> Examples </span>   {#clump_examples}
+
+In order to run *PLINK-CLUMP*, you have to change to the folder containing the regression results.
+If the identifier was chosen to be "Test" in the regression step, this can be accomplished by typing
+
+    cd Test  
+    
+The minimal input of *run_clump* may then be the following: 
+
+    run_clump --id Test  
+    
+In that case, all phenotypes that have been run through the regression step are treated (data is taken from the [parameter file](#gwas_output)).
+
+In case you are interested in a subset of the phenotypes that have been running through regression, you can explicitly make a request for these phenotypes:
+
+    run_clump --id Test --phenoname liver_fat,liver_size
+  
+This command includes two phenotypes only (but still uses 46 nodes or cores on the server!).
+
+Unfortunately, it will often be necessary to repeat the run with increased runtime request, because the job could not be finished timely.
+The runtime limit can be adjusted by modifying the *minutes* parameter:
+
+    run_clump --id Test --phenoname liver_fat,liver_size --minutes 200  
+  
+Please keep in mind that you can also use the short version of the formal parameters, so that the last command can be replaced by:
+
+    run_clump -i Test -pn liver_fat,liver_size -m 200
+
+The *minutes* parameter refers to the runtime per chromosome (but chromosomes are running parallel if enough nodes are available). 
+
+There are more command-line arguments which can be supplied to *run_clump*, see the table [above](#clump_parameters).
+Just type *run_clump* without any argument in order to obtain a complete list of options. 
+Also, keep in mind that the default options can be changed by modifying the file *~/clump_settings.sh*. 
+
+<br>
+
+
+
+
+
+
+### Reviewing the results  {#review_gwas}
+
+The script *review_gwas* provides a graphical summary (in HTML format) of the results obtained.
+It can be run immediately after *run_gwas*, or include the results of *run_cojo* and/or *run_clump*, see the [workflow above](#workflow).
+The output of *review_gwas* includes: 
+
+  - a short description of the regression model,
+  - lists of all parameters used during the pipeline,  
+  - statistics regarding filtering of samples and variants,
+  - tables of significant and/or independent variants (for PLINK-CLUMP and GCTA-COJO, if run),  
+  - a [QQ-plot](https://en.wikipedia.org/wiki/Q%E2%80%93Q_plot) for the $p$-values originating from regression, 
+  - a [Manhattan plot](https://en.wikipedia.org/wiki/Manhattan_plot) highlighting the genome-wide significant markers,
+  - a SNP density plot,
+  - a histogram and a Kernel density plot of the slopes for the regression lines ($\beta$-values), 
+  - a list of the [variance inflation factors](https://en.wikipedia.org/wiki/Variance_inflation_factor) for the covariates,
+  - an analysis of the residuals (histogram over residuals, QQ-Plot for residuals, etc.)
+
+<br>
+
+#### <span style="color:blue"> Parameters </span>   {#review_parameters}
+
+In order to run the program, one must change to the directory created by *run_gwas*. 
+If the identifier was chosen to be "Test", this is accomplished by typing
+
+    cd Test
+
+<br> 
+
+The program *review_gwas* has the following command line parameters:
+
+
+```{r, echo=FALSE, fig.cap="review_gwas parameters", out.width = '80%', fig.align='left'}
+graph="review_gwas.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+<br>
+
+Parameter    |     Description              | Variable name   | Default value
+-------------|------------------------------|-----------------|---------------------
+id           | job identifier               | ident           | none   
+phenoname    | phenotype name               | phenoname       | none 
+chr          | chromosomes to invoke        | chrom           | ~/review_settings.sh
+minutes      | required runtime in minutes  | minutes         | ~/review_settings.sh
+
+
+The job identifier ( *id* ) has to be the same as used in *run_gwas*. It is checked by the script if the actual folder name agrees with this identifier.
+The script can only handle one phenotype at a time, hence *phenoname* must be a single word.
+The parameter *chr* denotes the chromosomes to include, the default setting includes all autosomes (1-22), see the settings file for this script (*~/review_settings.sh*).
+The *minutes* parameter specifies the requested runtime for the whole script.
+
+A few parameters cannot be changed on the command line but only by making modifications in the *~/review_settings.sh* file:
+
+
+Parameter             |     Desription                             | Variable name   | Default value
+----------------------|--------------------------------------------|-----------------|---------------------------
+minspace              | miniumum required free disk space (Kb)     | same            | 10.000.000 = 10 GB
+partition             | requested partition (node or core)         | same            | node
+
+The program checks how much disk space is available in the current file system before starting *review_gwas*, and
+compares it with the value defined for *minspace*. It stops with an error message if the disk space is below the defined limit.
+The actual value declared in the settings file (10 GB) should be sufficient.
+
+The *partition* parameter can either be "node" or "core". 
+Most of the time, "node" is a better choice because considerably more CPU memory is provided when this option is chosen.
+For more information regarding technical information look [here](https://www.uppmax.uu.se/support/user-guides/slurm-user-guide/#tocjump_1777731700127163_5). 
+
+The scripts *review_gwas* calls a subprogram *review_gwas.R*. 
+This subprogram reads it's own settings file *~/review_settings.R*, also containing some default parameter values:
+
+Parameter     |     Desription                              | Variable | Default value
+--------------|---------------------------------------------|----------|-----------------------
+p_threshold   | $p$-value threshold (Manhattan plot         | same     | 5e-8
+bandwidth     | bandwidth for kernel density plot           | same     | 0.01
+annotation    | FTO and GNAT2 annotation in Manhattan plot  | same     | FALSE
+colvec        | Manhattan plot colors                       | same     | c("red","limegreen")
+max_xls       | max. number of hits listed in spreadsheet   | same     | 500
+
+Markers with a low $p$-value are emphasized in the Manhattan plot. The variable *p_threshold* defines the threshold for the $p$-values. 
+If *annotation* is set to "TRUE", two genes (FTO and GNAT2) are highlighted in the Manhattan plot. 
+The *colvec* parameters determine the colors used for the Manhattan plot.
+
+The *bandwith*-option determines how smoothly the Kernel density plot for the $\beta$-values is drawn-out. 
+The *review_gwas* script creates a spreadsheet containing all significant markers if their number is below the *max_xls* cutoff.
+
+When *review_gwas* running, the job is labelled with the job-ID (here: "liver18"):
+
+```{r, echo=FALSE, fig.cap="review_gwas running", out.width = '80%', fig.align='left'}
+graph="review_run.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+<br>
+
+
+
+####  <span style="color:blue"> Input files </span>   {#review_infiles}
+
+No input files have to be declared for *review_gwas*. 
+The script reads a number of files created during the previous steps and converts them to the appropiate format.
+Again, it is important to start the script in the folder containing the output files created by the the scripts run beforehand.
+
+<br>
+
+####  <span style="color:blue"> Output files </span> {#review_output}
+
+The script *review_gwas* creates the following output files [a star (**\***) stands for a string which depends on input parameters]: 
+
+
+File name pattern              |   Description  
+-------------------------------|-----------------------------------------
+gwas_report.Rmd                |  Rmarkdown file containing the results
+gwas_results.RData             |  Results in zipped (R-) format 
+Filtered_\*.RData              |  Results of filtering
+\*_regression_frame.RData      |  Auxiliary table  
+\*_regression_resid.RData      |  Auxiliary table
+\*_regression_metric.RData     |  Auxiliary table
+\*_regression_lmtab.RData      |  Auxiliary table
+\*_regression_vif.RData        |  Auxiliary table
+\*_resid_hist.png              |  Plot: histogram of the residuals
+\*_resid_qq.png                |  QQ-plot for the residuals 
+\*_cook_dist.png               |  Plot: Cook's distance 
+\*_signif_markers.RData        |  Auxiliary table
+\*_cojoed_markers.RData        |  Auxiliary table
+\*_cojoed_orig_markers.RData   |  Auxiliary table
+\*_clumped_markers.RData       |  Auxiliary table
+\*_cojo_nearest_genes.RData    |  Auxiliary table
+\*_clump_nearest_genes.RData   |  Auxiliary table
+\*_Manhattan.png               |  Manhattan plot
+\*_snp_density.png             |  SNP density plot
+\*_QQplot.png                  |  QQ-plot for the $p$-values
+\*_beta_hist.png               |  Plot: histogram of $\beta$-values
+\*_beta_kernel.png             |  Kernel density plot of $\beta$-values
+\*_rmd_review_params.RData     |  Auxiliary table
+\*_signif_markers.xls          |  Spreadsheet with significant markers
+\*_report.html                 |  Main output of *review_gwas*
+\*_review.log                  |  Main logfile for *review_gwas* 
+
+The most important file, containing the graphical presentation of the results, is <span style="color:blue">\*_report.html</span>.  
+It can be copied to a local computer and opended with some browser.
+The HTML file contains a link to an Excel file ( "\*_signif_markers.xls" ) containing a list of all genome-wide significant markers. 
+The link works only if the spreadsheet is copied to the same folder as the HTML file.
+Note that no Excel file is created if too many genome-wide significant markers have been identified, see the description of the *max_xls*-parameter above. 
+
+<br>
+
+####  <span style="color:blue"> Checking accuracy </span>
+
+
+After running *review_gwas*, it is recommended to check if all parts of the pipeline were executed without failure. 
+Therefore, it is useful to parse all logfiles in the results-folder for errors or warnings. 
+This can be accomplished by using the following Linux commands:
+
+    fgrep -i error *.log
+    fgrep -i warning *.log
+    
+The *-i* option stands for *ignore case*, ensuring that also phrases like "*ERROR*" or "*Error*" are detected. 
+If these commands yield no output, the regression step was most likely successful.
+If exactly launched as displayed above, the command also checks the logfiles created in the regression step, in the GCTA-COJO step, and in the PLINK-CLUMP step (if conducted).  
+
+The following warning possibly created in the PLINK-CLUMP step can be ignored: "*No significant -&thinsp;-clump results.  Skipping*". 
+It means that an individual chromosome did not contain any genome-wide significant hit.
+
+A frequently occuring error is runtime limit exceedance, especially for the chromosomes having many markers (e.g. chromosome 2). 
+In that case, the job must be restarted with a higher runtime claim, by scaling up the *minutes*-parameter.
+
+If a more rigorous check is to be done, the script *check_gwas* can be executed, see some details [here](#check_gwas).
+This program checks also completeness of the results and considers the dates of the logfiles in order to exclude outdated files.
+
+<br>
+
+####  <span style="color:blue"> Subprograms </span>   {#review_subs}
+
+
+The script *review_gwas* calls the subprogram  *review_gwas.R*, which in turn loads several Rmarkdown templates and code chunks
+(*table_signif.Rmd*, *table_cojoed.Rmd*, *table_clumped.Rmd*, *comparison_plink_clump.Rmd*, *table_unpruned.Rmd*). 
+Additionally, a file *review_functions.R* is loaded, containing some helper-scripts. 
+
+<br>
+
+####  <span style="color:blue"> Examples </span>   {#review_examples}
+
+In order to run *review_gwas*, you have to change to the folder containing the results of the previously executed scripts.
+If the identifier was chosen to be "Test" in the regression step, this can be accomplished by typing
+
+    cd Test  
+    
+The minimal input of *review_gwas* might then be the following (assuming *liver_fat* has been used as a phenotype name in the pipeline): 
+
+    review_gwas --id Test --phenoname liver_fat
+
+As mentioned above, *review_gwas* can only take one phenotype at a time. 
+
+Sometimes, it might be necessary to repeat the run with increased runtime request, because the job could not be finished timely.
+The runtime limit can be adjusted by modifying the *minutes* parameter:
+
+    review_gwas --id Test --phenoname liver_fat --minutes 150  
+  
+(The default runtime, as defined in *~/review_settings.sh*, is 90 minutes.)
+
+Please keep in mind that you can also use the short version of the formal parameters, so that the last command can be replaced by:
+
+    review_gwas -i Test -pn liver_fat -m 150
+
+The *minutes* parameter refers to the runtime for the whole script. 
+
+All available command line parameters of *review_gwas* are listed if the command is typed without any arguments. 
+Also, keep in mind that the default options can be changed by modifying the file *~/review_settings.sh*. 
+
+
+
+
+<br>
+
+### A typical GWAS session    {#typical_session}
+
+In the following, a complete GWAS run is presented, merely applying a minimal set of the mandatory command line parameters. 
+All other parameters are set to default values by gathering information from the [parameter file](#gwas_output) and from the corresponding [settings files](#setfiles).
+
+<br>
+
+
+#### <span style="color:blue"> 1. Regression </span>
+
+Jobs can for instance be executed in the folder */proj/sens2019016/GWAS_TEST*.
+This folder already contains some covariate and phenotype files.
+(An alternative location would be */proj/sens2019016/nobackup/GWAS_TEST*.)   
+Let us assume we are in the above mentioned folder:
+
+    pwd # /proj/sens2019016/GWAS_TEST 
+    
+An example of a phenotype file is *liver_INT.txt* &thinsp;:
+
+    ls -l liver_INT.txt  
+    
+The first five rows of this phenotype file can be viewed using the *head* command:
+
+    head -5 liver_INT.txt   
+    
+which yields the following output:
+
+
+```{r, echo=FALSE, fig.cap="Head of a phenotype file", out.width = '65%', fig.align='left'}
+graph="head_phenotype_file.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+
+The file contains a phenotype labelled "liver_fat". (The *#FID* and *IID* columns are mandatory.)
+This phenotype file and this phenotype name can be used to run the following regression:  
+
+    run_gwas --id Test --phenofile liver_INT.txt --phenoname liver_fat
+
+The phenotype *liver_fat* is a continuous variable. Therefore, a linear regression is carried out.
+See [above](#gwas_input) for encoding of binary phenotypes. 
+The phenotype file is expected to be located in the current folder (*/proj/sens2019016/GWAS_TEST*),
+because the *phenofolder* variable is set to the actual folder by the instruction *phenofolder="."* 
+in the settings file *~/gwas_settings.sh*. 
+(A dot specifies the actual folder in UNIX/Linux.)  
+
+A covariate file name was not given here. It is therefore taken from the parameter file, where
+*covarfile="GWAS_covariates_PC40.txt"* is specified. This file contains the covariates "array", "sex", "age", "age_squared", 
+as well as 40 [Genetic Principal Components](https://biobank.ctsu.ox.ac.uk/showcase/field.cgi?id=22009) 
+calculated by [PCA](https://en.wikipedia.org/wiki/Principal_component_analysis) for 337,466 individuals filtered for 
+Caucasian ethnic background and for absence of relatives in the database.
+Note that not all covariates included in this file are automatically used in the regression, but only
+those included in a comma-separated list passed to the variable *covarname*. 
+The *covarname* variable is also defined in the settings file but can also be modified on the command line.
+It is important to note that the covariate file must reside in the same folder as the phenotype file,
+i.e. it's location is determined by the *phenofolder* variable.
+
+If the regression is started as shown above, all human autosomes are included in the GWAS following
+the specification in *~/gwas_settings.sh*, which reads *chrom="1-22"*.  
+
+We have not assigned any of the parameters *maf*, *mac*. *vif*, *hwe*, *mr2*, *geno*, *mind*, or *minutes* 
+on the command line, so that all values are taken from *~/gwas_settings.sh*. 
+A brief description of these parameters was given [above](#run_gwas), 
+a detailed description is on the [PLINK website](https://www.cog-genomics.org/plink/1.9/filter).
+
+As already mentioned, the script *run_gwas* creates a folder for each run and stores all output files in this folder.
+It is convenient to change to this folder in order to follow the progress of the jobs:
+
+    cd Test
+    
+(Remember that *Test* was the job-ID chosen.)
+
+The progress of the job can be followed using the *squeue* command:
+
+    squeue
+
+The output of *squeue* might look like that:  
+
+
+```{r, echo=FALSE, fig.cap="Screenshot of squeue output", out.width = '90%', fig.align='left'}
+graph="squeue_run_gwas.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+
+There is one job for each chromosome with jobname "GWAS-*XX*", where "*XX*" stands for the chromosome number. 
+The jobs for the individual chromosomes are submitted simultaneously. However, they might not start immediately
+because of the lack of available nodes on the server.  
+
+The status of the job can be inferred from the status (**ST**) column of the *squeue* command:
+
+  - **PD**: &thinsp; job is pending
+  - **R**:  &thinsp;  &thinsp;  &thinsp; job is running
+  - **CG**:  &thinsp; job is completing
+
+More about technical terms connected with the queue can be found [here](https://www.uppmax.uu.se/support/faq/running-jobs-faq/your-priority-in-the-waiting-job-queue/).    
+
+Remember that it is possible to cancel accidentally submitted jobs with the *scancel* command:
+
+    scancel jobID  
+    
+(The jobID is listed in the **JOBID** column of the *squeue* output.)  
+
+You can also cancel all jobs belonging to your user name by typing:
+
+    scancel -u username 
+    
+At any time, you can look at the logfiles produced using the Linux *more* command, e.g.
+
+    more Test_gwas.log   
+    
+All logfiles can be listed with
+
+    ls -l *.log
+    
+Important parameters are included in the parameter file:
+
+    more Test_gwas_params.txt  
+    
+However, do *not* change this file under any circumstances (!), because it is used for gathering of information by subsequent scripts. 
+
+When the jobs are finished, or even while they are still running, it is recommended to check if the logfiles contain any error messages or warnings:
+
+    fgrep -i error *.log
+    fgrep -i warn *.log  
+    
+When the regression was succesful, the main output files can be listed by using:
+
+    ls -l *.glm.linear
+    
+or 
+
+    ls -l *.glm.logistic  
+    
+depending on the type of regression made.
+
+A typical file containing regression results looks like that:
+
+    head -5 Test_gwas_chr1.liver_fat.glm.linear
+    
+
+```{r, echo=FALSE, fig.cap="Regression output file", out.width = '100%', fig.align='left'}
+graph="regression_output_linear.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+It contains chromosome, position, name, alleles, allele frequencies, $\beta$-values, standard errors, and $p$-values for each marker.
+
+
+The number of entries in each output file can be counted by executing the command:
+
+    wc -l Test_gwas*.glm.linear
+    
+The numbers obtained must agree with the numbers of SNP's on each chromosome 
+(but keep in mind that the header line is also counted by the above command).
+
+Now, it is possible to look at the results by running *review_gwas*. Alternatively, independent markers can be identified by conducting
+GCTA-COJO and/or PLINK-CLUMP, see below.
+
+
+<br>
+
+  
+#### <span style="color:blue"> 2. GCTA-COJO </span>
+
+In order to find SNP's in linkage equilibrium ("independent markers"), the program [GCTA-COJO](https://cnsgenomics.com/software/gcta/#COJO) can be applied.
+It is started on the server using the *run_cojo* script:
+
+    pwd # /proj/sens2019016/GWAS_TEST/Test
+    run_cojo --id Test    
+
+The phenotype name (*phenoname* variable) is not explicitly invoked on the command line. In this case, all phenotypes that 
+have been used in *run_gwas* are considered. In our example, this is only a single phenotype,
+so that the command 
+
+    run_cojo --id Test  --phenoname liver_fat  
+    
+would start the same job.   
+
+If *run_cojo* is started as shown above, it invokes a reduced genotype database ("FTD_rand") with 10.000 individuals 
+as a [reference dataset](https://cnsgenomics.com/software/gcta/#COJO). 
+In order to apply the same genotype dataset as used in the regression step,
+the *alt_genoid* entry in *~/cojo_settings.sh* must be removed (or commented out with a hash *#*).
+
+Again, the progress of *run_cojo* can be watched using the *squeue* command.
+The script submits 25 jobs per phenotype. 
+The individual subprograms have several dependencies, as already described [above](#cojo_subs).
+    
+It is recommended to use the *fgrep* commands shown above in order to check if errors occurred or if
+warning messages have been issued during the run.
+
+After finishing the job, the main output file, with suffix *\*.jma*, should be available:
+
+    ls -l Test_liver_fat_cojo.jma
+
+The file format looks like that:
+
+    head -5 Test_liver_fat_cojo.jma 
+   
+   
+```{r, echo=FALSE, fig.cap="Main COJO output", out.width = '100%', fig.align='left'}
+graph="main_cojo_output.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+It is possible to count the number of significant and independent markers with:
+
+    wc -l Test_liver_fat_cojo.jma
+
+More or less as a byproduct, *run_cojo* collects genome-wide significant hits for all chromosomes in a separate text file.
+This file has always the suffix *gwas_signif.txt*, while the first part of the filename depends on the parameters invoked.
+It is now easy to count the number of significant (but not independent) markers:
+
+    wc -l  Test_liver_fat_gwas_signif.txt 
+    
+To have a quick look at the number of significant hits on each chromosome, one can for example type:
+
+    awk '{print $2}' Test_liver_fat_gwas_signif.txt | uniq -c
+
+(The *awk* command just prints the 2nd column of the file.)   
+We have 456 hits on chromosome 19 and 206 hits on chromosome 22 for this example.
+
+
+    
+    
+<br>
+
+
+#### <span style="color:blue"> 3. PLINK-CLUMP </span>
+
+
+An alternative approach to identify markers in linkage equilibrium ("independent markers") is [PLINK-CLUMP](http://zzz.bwh.harvard.edu/plink/clump.shtml). 
+It can be run by using the *run_clump* program:
+
+    pwd # /proj/sens2019016/GWAS_TEST/Test
+    run_clump --id Test
+
+Again, the phenotype names are automatically inferred from the parameter file if no phenotype name is invoked explicitly.
+It would also be possible to specify the phenotype name on the command line:
+
+    run_clump --id Test --phenoname liver_fat
+    
+The jobs for the individual chromosomes are started simultaneously and are labelled "CLUMP-*XX*" where "*XX" stands for the chromosome number:
+
+```{r, echo=FALSE, fig.cap="Output of squeue command", out.width = '80%', fig.align='left'}
+graph="clump_running.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+The subprogram labelled "CLUMPCOLL" is run when all chromosomes are finished (it has a *Dependency* tag).
+    
+If the runtime limit has been exceeded without finishing the job, the job can be restarted with an increased runtime claim:
+
+    run_clump --id Test --minutes 150 
+
+In order to check for errors or warnings, inspect all logfiles produced so far:
+ 
+    fgrep -i error *.log 
+    fgrep -i warn *.log   
+
+ 
+The following warnings can be ignored:  
+ 
+```{r, echo=FALSE, fig.cap="Warnings for run_clump", out.width = '90%', fig.align='left'}
+graph="clump_warnings.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+ 
+They merely say that the corresponding chromosome did not include any significant hit
+(The chromosome number can be inferred from the logfile name).
+ 
+ 
+
+
+The main output file of *run_clump* - containing the markers found to be in linkage equilibrium - has the suffix *.jma:
+
+    ls -l Test_liver_fat_clump.jma
+    
+The file format is:
+
+    head -5 Test_liver_fat_clump.jma 
+    
+   
+```{r, echo=FALSE, fig.cap="Main CLUMP output", out.width = '95%', fig.align='left'}
+graph="main_clump_output.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+    
+    
+
+<br>
+
+#### <span style="color:blue"> 4. Reviewing results </span>
+
+The script *review_gwas* collects all results from the previously submitted programs and creates a file to be opened with a web browser. 
+It has to be started in the folder created by *run_gwas*:
+
+    pwd # /proj/sens2019016/GWAS_TEST/Test
+    review_gwas --id Test --phenoname  liver_fat
+
+Here, the phenotype name has to be invoked explicitly, because *review_gwas* can only work with a single phenotype at a time.   
+
+As before, the *squeue* command can be used to watch the progress of the script.
+Additionally, you might want to look at the logfile from time to time in order to see how far the script has proceeded:
+
+    more  Test_liver_fat_review.log  
+
+(Note that the name of the file again consists of a parameter-dependent part and a fixed part.)  
+
+If the file gets bigger and bigger it might be better to list the last (20) rows only:
+
+    tail -20 Test_liver_fat_review.log  
+
+The script needs some time to finish because high-resolution graphical output is produced.  
+
+The most important output of *review_gwas* is the *.html* file:
+
+    ls -l Test_liver_fat_report.html
+    
+Another result is a spreadsheet containing the genome-wide significant markers:
+
+    ls -l Test_liver_fat_signif_markers.xls
+    
+(No spreadsheet is created if too many genome-wide significant hits have been identified, 
+the threshold is defined by the *max_xls* parameter, see [above](#review_parameters).)
+
+In order to inspect the results of the GWAS, copy the *.html* and the *.xls* file to a local computer, and place both files in the same folder.
+The *.html* &thinsp; file can now be viewed with a browser.
+Here is an [example output](Test_liver_fat_report.html).
+
+The output file containing the results of a logistic regression looks slightly different. 
+Here is an [example](Test_logistic_report.html). 
+
+
+<br>
+
+
+#### <span style="color:blue"> Summary of the essential commands </span>   
+
+Here is a summary of the essential commands submitted to the server:
+
+    cd /proj/sens2019016/GWAS_TEST
+    run_gwas --id Test  
+    cd Test
+    run_cojo --id Test
+    run_clump --id Test 
+    review_gwas --id Test --phenoname liver_fat 
+    fgrep -i error *.log
+    fgrep -i warn *.log
+    ls -l *.html    # main result 
+    ls -l *.xls     # spreadsheet
+    
+In order to follow up the progress of your jobs, you can use the *squeue* command at any time:
+
+    squeue
+    
+If jobs were accidentally submitted, they can be cancelled using:
+
+    scancel jobid
+    
+(The jobID is listed in the **JOBID** column of the *squeue* output.)    
+
+You can cancel all your jobs with
+
+    scancel -u username 
+
+<br>
+
+###  Concise summary of results   
+
+A very concise summary of the results can be obtained using the script *recap_gwas*.
+The script is fast and does not run in a calculation node, i.e. it starts immediately.
+However, you have to make sure that the program is started in interactive mode, look [here](#introduction) in order to see how to do this.
+
+The script must be started in the folder containing the output files of the previously conducted scripts:
+    
+    pwd # /proj/sens2019016/GWAS_TEST/Test  
+    recap_gwas --id Test  
+
+The phenotype name is inferred from the [parameter file](#gwas_output) if not explicitly invoked on the command line.
+Multiple phenotypes can be considered at once.
+The main output is a spreadsheet containing the most important results of a GWAS session.
+Content and name of the spreadsheet depend on which programs have been run during the GWAS session.
+
+
+Programs run       |   Filename          |    Content
+-------------------|---------------------|-----------------------------------------------------
+*run_gwas* only    | "\*_unpruned.xls"   | genome-wide significant markers with $p > p_{thres}$
+*run_gwas* + cojo  | "\*_cojo.xls"       | independent markers according to GCTA-COJO
+*run_gwas* + clump | "\*_clump.xls"      | independent markers according to PLINK-CLUMP
+*run_gwas* + both  | "\*_clump_cojo.xls" | independent markers according to both algorithms
+
+
+The star (**\***) in the filename description stands for a parameter-dependent string 
+(which consists of the identifier and the phenotype name, separated by an underscore).  
+
+If neither GCTA-COJO nor PLINK-CLUMP were run, a list of all genome-wide significant markers is stored in the corresponding spreadsheet.
+Genome-wide significance is determined by a $p$-value cutoff having a default value of $p_{thres} = 5.0 \cdot 10^{-8}$.
+The default value is hard-coded in the script. 
+However, the threshold can be changed on command line by using the *-&thinsp;-pval* &thinsp; option , e.g.:
+
+    recap_gwas --id Test --pval 1e-8
+    
+The $p$-value is neglected if GCTA-COJO and/or PLINK-CLUMP were run.
+
+If multiple phenotypes were run through GWAS, a subset of phenotype names can be chosen explicitly on the command line, like so:
+
+    recap_gwas --id Test  --phenoname liver_fat  --pval 1e-8  
+
+If multiple phenotypes are to be invoked, their names must be separated by a comma:
+
+    recap_gwas --id Test  --phenoname liver_fat,liver_size  --pval 1e-8
+
+Besides the spreadsheet, *recap_gwas* outputs a text file containing the names of
+the most important files created during the GWAS session. The name of this file ends on *\*.files.txt*. &thinsp;
+The star (**\***) in the filename denotes a parameter-dependent string 
+(which consists of the identifier and the phenotype name, separated by an underscore).
+
+
+<br>
+
+
+### Check GWAS results for errors and warnings {#check_gwas}
+
+This can be accomplished by using *check_gwas*.
+
+**Example**
+
+    cd /proj/sens2019016/GWAS_TEST/liver16
+    check_gwas --id liver16 
+    
+The script writes a comprehensive logifile *gwas_check.log*. The total number of warnings is reported.
+
+<br> 
+
+
+
+
+###  Archiving of projects   
+
+GWAS runs can be archived and retrieved using the scripts *archive_gwas* and  *retrieve_gwas*, respectively.   
+
+The programs must be started from *outside* (!) the results folder. 
+The script *archive_gwas* has only one command line parameter which is the unique identifier used during the whole GWAS session:
+
+    pwd # /proj/sens2019016/GWAS_TEST  
+    ls -ld Test 
+    archive_gwas --id Test 
+
+The job is submitted to the batch queue, calling the subprogram *tar_gwas.sh*.     
+The whole folder is compressed to a *\*.tar.gz* archive, in the above example to *Test.tar.gz*.
+A copy of some important files is kept outside the *.tar.gz* &thinsp; archive for fast access. 
+A logfile  ("\*_archive.log") is written (here: *Test_archive.log*).   
+
+A few parameters are defined in the settings file *~/archive_settings.sh* &thinsp; :  
+
+
+Parameter     |     Desription                      | Variable | Default value
+--------------|-------------------------------------|----------|-------------------
+minutes       | requested runtime in minutes        | same     | 10   
+partition     | requested partition (node or core)  | same     | node
+delete_folder | delete original folder (0 or 1)     | same     | 0 (do not delete)
+
+Note that the original folder is not removed when the default settings apply. 
+However, this can be changed by modifying the *delete_folder* &thinsp; option in the settings file.
+
+For demonstration, let's move the archive to a different location in the file system: 
+
+    mv -i Test.tar.gz  /proj/sens2019016/nobackup/GWAS_TEST/  
+    
+Here, the original folder can be restored using the *retrieve_gwas* &thinsp; script:
+
+    cd /proj/sens2019016/nobackup/GWAS_TEST/   
+    retrieve_gwas --id Test 
+    
+The job is sent to the batch queue, calling the subprogram *untar_gwas.sh*
+with job name "RETRIEVE".   
+The scripts exits with an error message if attempts are made to overwrite an existing folder with the same name.     
+In order to gather the necessary  *partition* and *minutes* &thinsp; parameters, the *~/archive_settings.sh*  file is read.    
+The script writes a logfile labelled "\*_retrieve.log" (where the star is replaced by the unique identifier)
+ 
+ 
+<br>
+
+
+
+
+
+# Auxiliary scripts {#aux}
+
+
+
+###  Diagnostic tests on regression results 
+
+
+
+#### <span style="color:blue"> Overview </span> {#gwas_diagnose_overview}
+
+The program *gwas_diagnose* performs a detailed analysis of a multiple regression run for a single marker.
+It conducts a number of diagnostic tests on the variables used during regression and on the residuals resulting therefrom.
+The regression is conducted in R in order to be able to check if the results obtained by the *PLINK* program can be replicated independently. 
+
+It is convenient to start this script in a folder containing GWAS results obtained earlier. This makes it possible for the script to get some information from the parameter file (\*_gwas_params.txt). Likewise, a comparison with GWAS results calculated by *PLINK* is made possible.
+
+In a first step, the script extracts the genotype for the given marker using *PLINK2*. 
+The actual analysis is then conducted by the subprogram *gwas_diagnose.R*.     
+
+If not invoked on command line, the script reads the name of the covariate file, the covariate names, and the name of the phenotype file from the parameter file ( “\*_gwas_params.txt”; created by the *run_gwas* script).    
+
+The name of the summary statistics file is also automatically detected, if no alternative name is given on the command line.   
+
+Some default parameters are read from “*diagnose_settings.sh*” (which should be located in the home directory). 
+
+In order to detect multicollinearity, a (Pearson) correlation matrix and the variance inflation factors for the regressors are calculated.  
+
+A comparison of the *PLINK* regression with R-regression results is only possible if the genuine summary statistics file (created by *run_gwas*) is available in the workfolder. If such a comparison is desired, it is suggested not to enter the the name of the covariate file, the covariate name, or the name of the phenotype file ( *-&thinsp;-pheno*, *-&thinsp;-covar*, *-&thinsp;-cname* parameters) on the command line - these parameters are automatically inferred from \*_gwas_params.txt, ensuring that both computations use the same input parameters. If no summary statistics file is available, the comparison with the *PLINK* results is dismissed. This opens up for the possibility to run a quick regression for a single marker (if once started in the queue, the script takes 2 to 3 minutes only).   
+
+
+Subsequent to regression, *gwas_diagnose* carries out a number of diagnostic tests on the residuals.    
+The diagnostic tests include:
+
+  - a calculation of the variance inflation factors for the predictor variables (marker genotype and covariates),
+  - a calculation of the most important regression metrics, e.g. the estimated standard deviation of the noise term ($\sigma$), the coefficient of determination ($R^2$), and the Akaike information criterion [(AIC)](https://en.wikipedia.org/wiki/Akaike_information_criterion),
+  - a calculation (in R) of the regression coefficients ($\beta$) for the predictor variables, including their confidence intervals, standard errors, and $p$-values, 
+  - several diagnostic plots for the residuals (QQ-plot, scale-location plot, autocorrelation plot, plot of influential variables), 
+  - a plot of the phenotype  versus the marker genotype, in order to illustrate the regression quality,
+  - an estimation of potential outliers  
+
+For detailed information regarding the output created by *gwas_diagnose*, check the example output linked below.     
+
+
+<br>
+
+#### <span style="color:blue"> Parameters </span> {#gwas_diagnose_parameters}
+
+The program *gwas_diagnose* has the following command line parameters:
+
+```{r, echo=FALSE, fig.cap="gwas_diagnose options", out.width = '80%', fig.align='left'}
+graph="gwas_diagnose.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+    
+ 
+ 
+Parameter    |     Description                             | Variable name | Default value
+-------------|---------------------------------------------|---------------|------------------------- 
+snp	         | Name of the marker to be investigated       | marker        | no default
+chr	         | Chromosome where the marker is located      | chrom         | no default
+pname	       | Phenotype name                              | phenoname     | no default  
+pheno	       | Phenotype file                              | phenofile     | *_gwas_params.txt 
+covar	       | Covariates file                             | covarfile     | *_gwas_params.txt
+cname	       | Covariate names                             | covarname     | *_gwas_params.txt
+genoid	     | Identifier of the input genotype data set   | genoid        | ~/diagnose_settings.sh  
+summary	     | Summary statistics file from GWAS session   | summaryfile   | file name convention
+minutes	     | Requested runtine for genotype extraction   | minutes       | ~/diagnose_settings.sh
+rminutes 	   | Requested runtine for analysis of residuals | rminutes      | ~/diagnose_settings.sh 
+switch	     | Conduct regression on alternate allele      | switch        | 0 (use minor allele)
+nocomp	     | Skip comparison with PLINK results          | nocomp        | 0 (compare with PLINK)
+inter 	     | Run in interactive mode (not in SLURM)      | inter         | 0 (run in SLURM)
+ 
+The 3rd column of the table (“Variable name”) displays the variable names used internally in the scripts and in the settings file *~/diagnose_settings.sh*. 
+
+The minimum input consists of the SNP name, the chromosome the SNP resides on, and the phenotype name (these 3 variables have no default).
+Other parameters are sourced from the “settings file” *diagnose_settings.sh*, but can be overwritten on the command line. 
+Very few parameters are exclusively defined in the settings file, e.g. the PLINK2.0 version, see the table below.
+
+The *-&thinsp;-snp* command line option specifies the **marker** to be investigated. The marker must be included in the genotype database.
+It is therefore convenient to use some marker listed in the output table of a finished GWAS session (a table in some 
+*review_gwas* output, like [this one](Test_liver_fat_report.html)).
+Note that the unique marker name has to be invoked, including the characters specifying both alleles.
+The unique marker name can be inferred from the non-unique name using the script *get_alleles*.
+
+The *-&thinsp;-chr* parameter specifies the **chromosome** the marker is located on. 
+The chromosome number can also be taken from the table in the *review_gwas* output.  
+ 
+The *-&thinsp;-pname* parameter specifies the **name of the phenotype** to be used as a response variable in the regression. 
+This phenotype name must be a column name in the corresponding phenotype file (this is checked by the script). 
+The phenotype file name containing the phenotypes is automatically read from the parameter file \*_gwas_params.txt if not explicitely given on the command line. (It is recommended to let the script read the phenotype file name.)
+The phenotype file must be located in the folder defined by *phenofolder*. (If a dot is entered for phenofolder, the phenotype file must reside in the current folder, i.e. the folder the *gwas_diagnose* is started from.)
+Phenotype names and phenotype file names can also be looked up in the logfiles or in the [parameter file](#gwas_output) created during a GWAS session. 
+
+The **covariates** to use (*-&thinsp;-cname*) and the covariate file (*-&thinsp;-covar*) are automatically inferred from the parameter file (\*_gwas_params.txt). The names of the covariates to be included must be column names of the covariate file (also checked by the script). The covariate file must be located in the same folder as the phenotype file (i.e. it must be located in the current folder if a dot was entered for the *phenofolder* variable).
+
+The *genoid* parameter specifies which **genotype dataset** is used as input. Only a few choices are possible, depending on the project you are working with. In general, it should be sufficient to keep the definition which is pre-selected in *~/diagnose_settings.sh*.
+
+If the regression results are to be compared with some *PLINK* results obtained earlier, the script must be started in a folder containing these results. Then, the *gwas_diagnose* uses the **summary file** created by *PLINK* for this comparison. By default, the name of the summary file is guessed (by file name convention, defined in *gwas_chr.sh*). The name of the summary file can be changed using the *-&thinsp;-summary* parameter (not recommended). 
+
+The *-&thinsp;-minutes* and the *-&thinsp;-rminutes* parameters specify the requested runtime for the genotype extraction and for the analysis of the residuals, respectively. The default values are specified in *~/diagnose_settings.sh*.
+
+By default, the regression is made on the minor allele (*switch* is set to 0 in *gwas_diagnose.sh*). The regression is conducted on the alternate allele if *-&thinsp;-switch* is set to 1 on the command line.
+
+By default, the script attempts to run a comparison with *PLINK* results. This is ensured by setting *nocomp=0* in *gwas_diagnose.sh*, but can be overwritten on the command line by setting *nocomp* to 1.
+
+If the *-&thinsp;-inter* parameter is not set, the calculations are made by sending the scripts to the **SLURM** ("Simple Linux Utility for Resource Management") [workload manager](https://slurm.schedmd.com/documentation.html). However, the script can also be run in interactive mode by invoking *-&thinsp;-inter* on the command line. 
+In this case the interactive mode has to be started first, e.g. by using : *interactive -n 16 -t 6:00:00 -A sens2019016*.  
+
+Some default parameters are predefined in *diagnose_settings.sh*:
+
+ 
+Parameter     |     Description                             | Variable name | Default value
+--------------|---------------------------------------------|---------------|-------------------------
+genoid        | genotype file identifier                    | same          | ukb_imp_v3
+genofolder    | location of the genotype files              | same          | /proj/sens2019016/GENOTYPES/PGEN
+phenofolder   | phenotype file location                     | same          | current folder
+minutes	      | Requested runtine for genotype extraction   | same          | 10
+rminutes 	    | Requested runtine for analysis of residuals | same          | 20 
+partition     | partition (node or core)                    | same          | node
+
+
+
+<br>
+
+
+#### <span style="color:blue"> Versions </span> {#gwas_diagnose_versions}
+
+The script *gwas_diagnose_INT* performs a similar analysis as *gwas_diagnose* but puts the "fully adjusted two-stage inverse normal transformation" of the residuals in front of the regression. 
+The transformation is described in this [paper](https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0233847&type=printable).
+The input parameters are the same as for *gwas_diagnose*.
+
+
+The script *gwas_diagnose_nomarker* runs a regression on the covariates, without a marker involved. 
+The same diagnostic tests are made.
+This can for instance be helpful if the impact of the marker on the regression is to be assessed.
+The script uses a limited parameter set compared to *gwas_diagnose*:
+
+Parameter    |     Description                             | Variable name | Default value
+-------------|---------------------------------------------|---------------|------------------------- 
+pname	       | Phenotype name                              | phenoname     | no default  
+pheno	       | Phenotype file                              | phenofile     | *_gwas_params.txt 
+covar	       | Covariates file                             | covarfile     | *_gwas_params.txt
+cname	       | Covariate names                             | covarname     | *_gwas_params.txt
+rminutes 	   | Requested runtine for analysis of residuals | rminutes      | ~/diagnose_settings.sh 
+inter 	     | Run in interactive mode (not in SLURM)      | inter         | 0 (run in SLURM)
+
+The explanations of the parameters are the same as above.   
+
+<br>
+
+#### <span style="color:blue"> Example program calls </span> {#gwas_diagnose_calls} 
+
+1.) Running *gwas_diagnose* with the three mandatory parameters. The unique marker name, including both alleles, must be used. It was ensured beforehand that the marker is on chromosome 5 (by looking at the *review_gwas* output):
+
+    gwas_diagnose --snp rs767276217_A_G --chr 5 --pname liv5
+
+2.) Running *gwas_diagnose* in an interactive session:
+
+    interactive -n 16 -t 3:00:00 -A sens2019016   
+    cd /castor/project/proj/GWAS_DEV3/liver10
+    gwas_diagnose --snp rs188247550_T_C  --chr 19 --pheno liver_fat_ext.txt --pname liver_fat_a --inter   
+
+3.) Running without marker. This runs a regression on the covariates only, followed by the same diagnostic tests: 
+      
+    gwas_diagnose_nomarker --pname liver_fat_a  
+
+4.) Running the diagnostic tests after transformation of the phenotype variable (using the "fully adjusted two-stage inverse normal transformation"):
+         
+    gwas_diagnose_INT --snp rs767276217_A_G --chr 5  --pname liv5    
+
+5.) The same with the regression made on the alternate allele (*-&thinsp;-switch*):
+                     
+    gwas_diagnose_INT --snp rs767276217_A_G --chr 5  --pname liv2 --switch    
+
+<br> 
+    
+    
+#### <span style="color:blue"> Example output files </span> {#gwas_diagnose_output}
+
+
+An example output file for *gwas_diagnose* is [here](diagnose_rs188247550_T_C_allele_T.html).
+An example output file for *gwas_diagnose_nomarker* can be found [here](diagnose_nomarker.html).
+A comparison of the residuals with and without inclusion the the marker is linked [here](compare_residuals.html).
+The comparison was made using the script *compare_residuals* (see below).
+More example output files can be found in the “MolEpic” domain, for instance in:    
+
+  - 'Gold\\MolEpi\\Personal folders and scripts\\Uwe\\gwas\\sens2019016\\DIAGNOSE' or     
+  - 'Gold\\MolEpi\\MolEpic\\Imiomics\\gwas\\sens2019016\\DIAGNOSE'
+
+
+
+
+<br>
+
+###  Comparison of distributions  {#compres}
+
+The script *compare_residuals* can be used to compare two distributions, e.g. the residuals after two different regressions.
+The residuals must be available in ".RData" format:
+
+
+```{r, echo=FALSE, out.width = '65%', fig.align='left'}
+graph="comp_resid.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+The output includes:
+
+  - a comparison of the histograms
+  - a comparison of the density plots 
+  - a comparison of the QQ-plots 
+  - a comparison of the cumulative distribution plots
+  - a scatterplot of the residuals against each other   
+  
+**Example**:
+
+    compare_residuals resid1.RData  resid2.RData 
+
+An example output is [here](compare_residuals.html).
+ 
+
+
+<br>
+
+
+
+
+
+###  Transformation of variables  {#trafo}
+
+
+#### <span style="color:blue"> Simple transformations </span> {#trafo_simple}
+
+Simple transformations can be done using the script *transform_phenotypes*. 
+Input parameters are just the phenotype file to transform (in the format required by *PLINK*) and the desired type of transformation.
+All phenotype columns in the file are transformed (Note that the first two columns are reserved for *IID* and *FID*).
+
+
+```{r, echo=FALSE, out.width = '65%', fig.align='left'}
+graph="trafo_simple.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+Possible transformation are:     
+
+  - logarithmic transformation   
+  - square root transformation  
+  - inverse normal transformation ([INT](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2921808/))   
+
+**1.) Example of a logarithmic transformation:**
+
+    cd /proj/sens2019016/GWAS_TEST
+    transform_phenotypes liver_fat_pred_c.txt log
+    
+Output: 
+
+  - the tranformed file (*liver_fat_pred_c.txt.log_trans*) and 
+  - a plot showing the distributions before and after the transformation:
+
+```{r, echo=FALSE, out.width = '60%', fig.align='left'}
+graph="liver_fat_pred_c.txt_log.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+**2.) Example of a square root transformation**:
+
+    cd /proj/sens2019016/GWAS_TEST
+    transform_phenotypes liver_fat_pred_c.txt sqrt
+
+    
+Output: 
+
+  - the tranformed file (*liver_fat_pred_c.txt.sqrt_trans*) and 
+  - a plot showing the distributions before and after the transformation:
+
+```{r, echo=FALSE, out.width = '60%', fig.align='left'}
+graph="liver_fat_pred_c.txt_sqrt.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+
+**3.) Example of an inverse normal transformation**:
+
+    cd /proj/sens2019016/GWAS_TEST
+    transform_phenotypes liver_fat_pred_c.txt norm
+
+    
+Output: 
+
+  - the tranformed file (*liver_fat_pred_c.txt.norm_trans*) and 
+  - a plot showing the distributions before and after the transformation:
+
+```{r, echo=FALSE, out.width = '60%', fig.align='left'}
+graph="liver_fat_pred_c.txt_norm.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+
+
+
+#### <span style="color:blue"> Boxcox transformation </span> {#trafo_boxcox}
+
+The Boxcox transformation can be realised using *transform_phenotypes_boxcox*.
+Input is the phenotype file, the covariate file, and a string defining the covariates to use in the linear regression.
+Multiple phenotypes can be transformed simutaneously.
+
+
+```{r, echo=FALSE, out.width = '90%', fig.align='left'}
+graph="trafo_boxcox.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+**Example**:
+
+    cd /proj/sens2019016/GWAS_TEST
+    covarnames = "PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10,array,sex,age"
+    transform_phenotypes_boxcox  liver_fat_ext.txt GWAS_covariates.txt ${covarnames}    
+
+Output:   
+
+  - the tranformed file (*boxcoxed_liver_fat_ext.txt*)
+  - a plot showing the log-likelihood vs. $\lambda$ 
+  - a plot showing the distributions before and after the transformation
+  
+
+
+```{r, echo=FALSE, out.width = '45%', fig.align='left'}
+graph="lambda_liver_fat_a.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+  
+  
+
+
+```{r, echo=FALSE, out.width = '60%', fig.align='left'}
+graph="boxcoxed_liver_fat_a.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+  
+
+Note that the output might contain fewer lines than the input files because only the intersection of phenotype and covariates can be considered. 
+
+
+
+#### <span style="color:blue"> Inverse-normal transformed residuals </span> {#trafo_INT}
+
+The script *transform_phenotypes_INT* calculates the inverse-normal transformed residuals that result from the first step of "fully adjusted two-stage inverse-normal transformation" ([reference](https://journals.plos.org/plosone/article/file?id=10.1371/journal.pone.0233847&type=printable)).  
+These residuals can then be used as dependent variable in a regression on the genotype and the covariates, as done in the script *gwas_diagnose_INT*.    
+
+The steps performed are:   
+
+  - Linear regression of the phenotype against the covariates (no genotype included)
+  - Extraction of the residuals from that regression
+  - Inverse Normal transformation of the residuals
+ 
+Input are the phenotype file, the covariate file, and a string defining the covariates to be used in the linear regression.
+Multiple phenotypes can be transformed simutaneously.
+
+
+```{r, echo=FALSE, out.width = '90%', fig.align='left'}
+graph="trafo_INT.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+**Example**:
+
+    cd /proj/sens2019016/GWAS_TEST
+    covarnames = "PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10,array,sex,age"
+    transform_phenotypes_INT  liver_fat_ext.txt  GWAS_covariates.txt ${covarnames}    
+
+Output: 
+
+  - the tranformed file (*IN_transformed_liver_fat_ext.txt*)
+  - a plot showing the original distributions of the penotype, the distribution of the residuals after the linear regression, the distribution of the residuals after the linear regression and inverse-normal transformation, and a QQ-plot of the latter (as PDF)
+
+<br>
+
+```{r, echo=FALSE, out.width = '65%', fig.align='center'}
+graph="INT_liver_fat_a.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+<br>
+
+
+###  Explore correlations between covariates  {#examine_covariates}
+
+The script *examine_covariates* 
+
+  - calculates correlations between pairs of covariates and plots a heatmap illustrating this
+  - calculates the variance inflation factors for the covariates
+
+The script has one mandatory parameter (*covariate-file*) and one optional parameter (*correlation threshold*). The threshold defines the Pearson correlation that is regarded as maximum permissible. The default value of the threshold is 0.5.    
+
+```{r, echo=FALSE, out.width = '80%', fig.align='center'}
+graph="examine_covariates.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+
+**Example**:
+
+    cd /proj/sens2019016/GWAS_TEST
+    examine_covariates  GWAS_covx.txt  
+
+Output: 
+
+  - a spreadsheet (*examine_covariates.xls*) listing pairs of covariates whose correlation exceeds the threshold 
+  - a heatmap of the correlation between the covariates (*correlation_heatmap.png*)
+  
+
+```{r, echo=FALSE, out.width = '80%', fig.align='center'}
+graph="correlation_heatmap.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+  
+<br>  
+  
+###  Fetching phenotypes from a local database  {#fetch_pheno}
+
+An ID is necessary to fetch a phenotype from the database. Therefore, it is convenient to use *fetch_pheno* together with *search_fieldID*. The latter script provides the ID.
+
+
+```{r, echo=FALSE, out.width = '60%', fig.align='left'}
+graph="search_fieldID.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+<br>
+
+```{r, echo=FALSE, out.width = '50%', fig.align='left'}
+graph="fetch_pheno.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+The local database is specified in *~/fetch_settings.sh*.
+
+**Example**:
+  
+    cd /proj/sens2019016/GWAS_TEST
+    search_fieldID principal 
+    search_fieldID principal notes # if the "Question asked" is to be added to the output
+    
+This command yields two fields containing the keyword *principal*. One of the field ID's can now be used to fetch the corresponding phenotype:
+
+    fetch_pheno --field 22009 --out PCA.txt 
+    
+The output file *PCA.txt* now contains 40 principal components (plus the *IID* and *FID* columns).
+
+<br>  
+
+
+###  Filtering phenotype files  {#filter_pheno}
+
+In order to filter phenotype files, a file containing the ID's to be filtered for is necessary.
+Two alternative programs can be used for filtering.    
+
+1.) A bash script:
+
+```{r, echo=FALSE, out.width = '70%', fig.align='left'}
+graph="filter_pheno.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+2.) An R-script:
+
+```{r, echo=FALSE, out.width = '80%', fig.align='left'}
+graph="filter_phenotype.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+Both scripts use the same input parameters:
+
+  - the phenotype file to be filtered
+  - the filter file, containg sample ID's
+  - the ID-column number in the phenotype file (mostly 1) 
+  - the ID-column number in the filter file (mostly 1) 
+  
+**Examples**: 
+
+The file *caucasian_22006.txt* contains Caucasian individuals only and can be used as a filter file. (The file was fetched from a local database using [fetch_pheno](#fetch_pheno).) 
+The phenotype file *pheno_487409.txt* contains additional samples. We attempt to filter that phenotype file for Caucasians:
+
+    cd /proj/sens2019016/GWAS_TEST 
+    wc -l pheno_487409.txt     # 487410
+    wc -l caucasian_22006.txt  # 409630  less samples
+    filter_pheno --pheno pheno_487409.txt --filter caucasian_22006.txt --c1 1 --c2 1 
+ 
+We tell the script in which columns the ID's reside by specifying *-&thinsp;-c1* and *-&thinsp;-c2*, respectively.    
+The output phenotype file *pheno_487409.filtered* contains only Caucasian individuals.
+
+The same can be achieved by using the R-script:
+
+    filter_phenotype  pheno_487409.txt  caucasian_22006.txt  1  1 
+    
+The R-script returns an output file (*pheno_487409.txt.filtered*) containing the filtered phenotype and a Venn diagram illustrating the intersection of the input files and the output file:
+
+
+```{r, echo=FALSE, out.width = '55%', fig.align='center'}
+graph="pheno_487409.txt_venn.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+
+Note that the output (filtered) file might contain fewer lines than both input files because the intersection of samples is considered (as illustrated by the Venn diagramm).
+
+<br>  
+  
+  
+###  Extract genotype data in raw format (extract counts)  {#extract_raw}
+
+Raw genotype files can be read by external programs, e.g. by R. 
+In order to extract genetic raw data for a given list of markers and samples, the script *extract_raw* can be used.
+
+
+```{r, echo=FALSE, out.width = '80%', fig.align='left'}
+graph="extract_raw.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+Mandatory parameters are:
+
+  - the name of the file containing the samples to be included (*-&thinsp;-samples*) 
+  - the name of the file containing the markers to be included (*-&thinsp;-markers*) 
+  - a string defining the file name prefix for the output files (*-&thinsp;-out*)  
+  
+Optional parameters are:
+
+  - the chromosomes to be considered (*-&thinsp;-chr*), with default "1-22"
+  - the ID of the genotype database to extract from (*-&thinsp;-genoid*), with default "ukb_imp_v3" (the most comprehensive database)
+
+The optional parameters are inferred from *~/extract_raw_settings.sh* if not specified on the command line.
+
+**Example**:  
+
+The script should be run in interactive mode (otherwise, the script complains and exits!). 
+
+    interactive -n 16 -t 30:00 -A sens2019016
+    cd /proj/sens2019016/GWAS_TEST
+    wc -l SNP_list.txt    # 10 markers
+    wc -l samples.txtx    # 337466 samples
+    extract_raw --samples samples.txt --markers SNP_list.txt  --out SNP_out 
+
+The output consists of a logfile and a file containing the raw data for each chromosome that harbored at least one of the specified markers.
+For the example above, hits have been found on chromosomes 1, 2, 3, 4, 6, 8, 10, 15, and 19 : 
+
+
+```{r, echo=FALSE, out.width = '80%', fig.align='left'}
+graph="extract_raw_output.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+Each of the raw data files has one column for the sample ID's and one column for each marker found on this chromosome. An example showing the first 10 rows is [here](./head_SNP_out_chrom10.raw) (ID's anonymized, non-integer values are imputed). 
+The files for the individual chromosomes can be joined using the script [merge_on_first_column](#merge_on_first_column).
+
+Additionally, a logfile containg information for each chromosome is created, looking like [this](./extract_raw.log). 
+
+It might be a problem to obtain the sample list (which possibly must be filtered). Here we show how the samples filtered for ethnic background and relatives can be created. In order to do this, we use the sample list belonging to the "FTD" database:
+
+    cd /proj/sens2019016/GENOTYPES/PGEN_ORIG                    # go there
+    cp -i ../PGEN/FTD_chr9.psam /proj/sens2019016/GWAS_TEST/    # copy to workfolder
+    cd /proj/sens2019016/GWAS_TEST/                             # go back to workfolder
+    tail -n +2 FTD_chr9.psam | awk '{print $2}' > samples.txt   # create list
+    wc -l samples.txt                                           # 337466 that's the list used above
+
+ <span style="color:red"> Please, do not change or move the original file /proj/sens2019016/GENOTYPES/PGEN_ORIG/FTD_chr9.psam ! </span>
+
+
+<br>  
+  
+ 
+### Merge multiple file by ID's in the 1st column {#merge_on_first_column} 
+
+The script can be used to merge multiple files, e.g. the output files of [extract_raw](#extract_raw).
+The files will be merged based on the entries in the first column of the input files (should be some sort of unique ID's).
+The files to be merged have to be specified using a file of file names (fofn):
+
+
+```{r, echo=FALSE, out.width = '50%', fig.align='left'}
+graph="merge_1st.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+ 
+**Example**: 
+
+    cd /proj/sens2019016/GWAS_TEST/ 
+    ls tab1_chrom*.raw > raw.fofn    # create fofn
+    merge_on_first_column  raw.fofn  merged.out    
+    
+The output file (here: *merged.out*) contains the concatenated files.    
+ 
+<br>   
+  
+###  Calculate linkage of a pair of SNP's  {#linkage}
+
+The linkage of a pair of markers can be calculated using *linkage_pair*
+
+
+```{r, echo=FALSE, out.width = '80%', fig.align='left'}
+graph="linkage_pair.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+Mandatory parameters:    
+
+  - the names of both markers (*-&thinsp;-snp1* ; *-&thinsp;-snp2*), and 
+  - the chromosome they are located on (*-&thinsp;-chromosome*).
+
+Optional parameter:
+
+  - the data base to fetch the genotype data from (*-&thinsp;-genoid*)
+  
+If not provided on the command line, the name of the genotype data base will be taken from *~/linkage_settings.sh*. 
+
+Like many programs described here, *linkage_pair* consists of a bash script (*linkage_pair.sh*), an R script (*linkage_pair.R*), and an Rmarkdown file (*linkage_pair.Rmd*). The bash script downloads the marker genotype, the R script does the calculations, and the Rmarkdown presents the results.
+Addtionally, the script *extract_genotype.sh* is utilized. 
+The script simply runs a regression of the genotype of one marker against the other. 
+
+**Example**: 
+
+    cd /proj/sens2019016/GWAS_TEST/  
+    linkage_pair --snp1 rs58542926_T_C --snp2 rs188247550_T_C  --chr 19
+
+The unique marker names, containing both alleles, are needed here.
+The output consists of several plots, a logfile, and an HTML file containing the results.
+An example output is [here](linkage_rs58542926_T_C_rs188247550_T_C.html). 
+
+More example output:
+
+  - \\Gold\MolEpi\\Personal folders and scripts\\Uwe\\gwas\\sens2019016\\LINKAGE
+  - \\Gold\\MolEpi\\MolEpic\\Imiomics\\gwas\\sens2019016\\LINKAGE
+
+<br>
+
+
+
+
+###  Filter a (phenotype) file  {#filter_samples}  
+
+It is often necessary to filter the samples in a phenotype (or other) file according to certain criteria. 
+This can be accomplished by using *filter_samples*. The script uses the ID column for filtering.
+
+
+```{r, echo=FALSE, out.width = '65%', fig.align='left'}
+graph="filter_samples.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+The options can be combined using a comma-separated list.
+The scripts can read several input formats, but the files must be tab-separated.
+
+
+**Examples**:
+ 
+ PGEN format (*.psam*): 
+ 
+    cd /proj/sens2019016/GWAS_TEST/  
+    filter_samples ukb_imp_v3_chr19.psam a,b  filtered.txt              # keep only unrelated Caucasians
+    filter_samples ukb_imp_v3_chr19.psam a,b,c,d  filtered2.txt         # keep only unrelated Caucasians that are MRI scanned and do not have aneuploidy
+    filter_samples ukb_imp_v3_chr19.psam a,b,c,d,e  filtered_female.txt # as above but females only    
+    filter_samples ukb_imp_v3_chr19.psam a,b,c,d,f  filtered_male.txt   # as above but males only    
+
+ BED format (*.fam*):
+ 
+    cd /proj/sens2019016/GWAS_TEST/ 
+    filter_samples  FTD_chr22.fam  a filtered_relat.txt   # keep only unrelated individuals
+
+ RAW files with 2 columns:    
+ 
+    cd /proj/sens2019016/GWAS_TEST/ 
+    filter_samples  filter_input.txt  c,f  filter_output_1.txt   # keep only MRI-scanned males 
+
+ RAW files with 1 column:   
+
+    cd /proj/sens2019016/GWAS_TEST/ 
+    filter_samples  filter_in_one.txt  c,e  filter_output_2.txt  # keep only MRI-scanned females
+ 
+ 
+The script should automatically detect the input file format (PGEN, BED, RAW).  
+
+<br>
+
+###  Join two phenotype files  {#join_pheno}
+
+This program can only be run in an interactive session (not in the login node, checked by the script). 
+To start an interactive session, type for example:
+
+    interactive -n 16 -t 30:00 -A sens2019016
+    
+The script can then be started:
+
+```{r, echo=FALSE, out.width = '50%', fig.align='left'}
+graph="join_pheno.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+The scripts merges the two input phenotype files (specified by *-&thinsp;-file1* and *-&thinsp;-file2*, respectively) into one.
+The two files are merged by the *IID* column, the concatenated file is written to the file specified by *-&thinsp;-out*.
+
+
+**Example**:
+
+    cd /proj/sens2019016/GWAS_TEST
+    join_pheno --file1 BMI_21001_plink.txt --file2 IN_transformed_BMI_21001_plink.txt --out joined_phenofile.txt. 
+
+For illustration, a Venn plot is made showing the number of intersecting samples of both files:
+
+
+```{r, echo=FALSE, out.width = '50%', fig.align='center'}
+graph="joined_phenofile.txt.venn.png"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+(Here, the *file2* samples are a true subset of the " *file 1* samples.)
+
+<br>
+
+### Get basic genotype statistics for a list of markers {#get_stats} 
+
+The command *get_stats* calculates some basic genotype statistics for a number of markers.
+The only command line parameter is the name of the file containing the (unique) marker names:
+
+
+```{r, echo=FALSE, out.width = '50%', fig.align='left'}
+graph="get_stats.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+The script is very fast and can also be run in the login node.
+Some default parameters are fetched from *~/stats_settings.sh*, e.g. the chromosomes to search for the specified markers (default is "1-22"). 
+The output includes two files:    
+
+  - one with basic frequency statistics for each marker (*.afreq*), and 
+  - one with some metrics connected to Hardy-Weinberg equilibrium (*.hardy*).
+
+**Example**:
+
+    cd /proj/sens2019016/GWAS_TEST 
+    get_stats --snps snp_list.txt 
+    
+Here are the input [list](./snp_list.txt), the resulting frequency [file](./snp_list.txt.afreq), and the resulting Hardy-Weinberg [output](./snp_list.txt.hardy) for the commands displayed above. 
+
+
+<br>
+
+### Fetch samples from a list randomly 
+
+It might be necessary to fetch a certain number of samples randomly from a bigger list. 
+As an example, the reference genotype dataset used for *GCTA-COJO* consists of 10.000 randomly chosen samples, in order to save CPU time.
+The script *random_samples* can fetch from lists in different formats (*.pgen*, *.bed*, or raw files with 1 or two columns). 
+The input file format is automatically detected.   
+
+The command line parameters are:
+
+  - the (big) input file,
+  - the number of random samples to fetch, and
+  - the name of the output file:
+  
+
+```{r, echo=FALSE, out.width = '100%', fig.align='left'}
+graph="random_samples.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+
+**Examples**:
+
+    cd /proj/sens2019016/GWAS_TEST
+    random_samples ukb_imp_v3_chr19.psam  10000  sampled.txt   # from .pgen
+    random_samples  FTD_chr22.fam  50000 s50000.txt            # from .bed
+    random_samples  filter_input.txt  1000  s1000.txt          # from raw file with 2 columns
+    random_samples  filter_in_one.txt  10000  choose10000.txt  # from raw file with one column
+
+
+<br>
+
+
+### Remove samples from a genotype database
+
+Sometimes samples have to be removed from a genotype database, for instance when patients withdraw from a study.
+This task can be accomplished using *remove_samples*.     
+
+Input is:
+
+```{r, echo=FALSE, out.width = '80%', fig.align='left'}
+graph="remove_samples.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+Mandatory parameters are:
+
+  - the genotype database to be cleaned (*-&thinsp;-genoid*),
+  - the name of the new genotype database(*-&thinsp;-newgenoid*), and    
+  - the name of the file containing the samples to be removed (*-&thinsp;-sfile*).
+  
+Optional parameters are:  
+  
+  - the chromosomes to involve (*-&thinsp;-chr*) and
+  - the estimated runtime in minutes (*-&thinsp;-minutes*).
+  
+If the optional parameters are not invoked on the command line, they are taken from *~/remove_settings.sh*.    
+
+The sample file (*-&thinsp;-sfile*) must be a space/tab-delimited text file with family IDs in the first column and individual IDs in the second column, as usual for *PLINK*.
+The script should work for *.pgen* and *.bed* genotype formats, the format is automatically detected.
+
+
+**Example**:
+
+    cd /proj/sens2019016/GWAS_TEST
+    remove_samples --genoid MF2 --new_genoid MF3 --sfile samples_to_remove.txt  
+
+One batch job for each chromosome is started simultaneously.
+
+<br>
+
+
+###  Allele info  {#get_alleles}
+
+The script *get_alleles* just displays some information about a marker, taken from the local ("ukb_imp_v3") database.
+Output looks like that:
+
+
+```{r, echo=FALSE, out.width = '60%', fig.align='left'}
+graph="get_alleles.PNG"
+plot = paste(workfolder, graph, sep ="/")  
+knitr::include_graphics(plot)
+```
+
+<br>
+
+###  Other programs  {#other}
+
+The following programs are mainly for administrative purposes and are not described in detail.
+Typing the program name on the command line provides some help (as for all scripts).
+The source code of the scripts is comprehensively commented.
+
+The scripts are:
+
+  - *extract_snps* : Create a smaller genotype database (with less markers) from a bigger one    
+  - *extract_samples* : Create a smaller genotype database (with less samples) from a bigger one 
+  - *show_logdates* : Show the modification dates of all logfiles in the current folder and compares with the date info of some other specified file
+  - *convert_genotype*: converts a genotype database from *.pgen* to *.bed* format (which is for example needed for PLINK clump)  
+  - *convert_phenofile*: converts phenotype files (delivered by Taro) to a format readable by *PLINK* 
+  - *concat_gwas_results*: Merges GWAS output files ("\*.linear") for all chromosomes. Needed for Mendelian Randomization. 
+  - *merge_gwas_results*: the same as *concat_gwas_results*, with a little bit different code
+  - 
+--------
+
+[uwe.menzel@medsci.uu.se](mailto:uwe.menzel@medsci.uu.se)    
+[uwe.menzel@matstat.org](mailto:uwe.menzel@matstat.org)
+
+
+<br><br>
+
+
+
