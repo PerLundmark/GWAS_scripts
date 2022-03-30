@@ -625,7 +625,8 @@ rownames(data) = data$IID
 # OBS!: vif (below) does not work if one or more variables are constant:  "Error in vif.default(lmout) : there are aliased coefficients in the model"   
 #   remove constant variables:    
 
-logarr = apply(data, 2, function(x) { var(x, na.rm = TRUE) == 0} )
+#logarr = apply(data, 2, function(x) { var(x, na.rm = TRUE) == 0} )  #TODO: It looks like this code is dependent on numeric coding of pheno /covars /PL
+logarr = apply(data, 2, function(x) { length(unique(x)) == 1} )
 nr_zero = sum(logarr)
 
 if(nr_zero > 0)  {
@@ -730,7 +731,11 @@ cat(paste("  Regression results saved to '", lmfile, "'\n"))
 
 inflation = vif(lmout)
 
-#      PC1      PC2      PC3      PC4      PC5      PC6      PC7      PC8      PC9     PC10    array      sex      age 
+if (class(inflation) == "matrix"){
+  inflation = inflation[,1]
+  
+}
+# PC1      PC2      PC3      PC4      PC5      PC6      PC7      PC8      PC9     PC10    array      sex      age 
 # 1.109465 1.036303 1.083822 1.995148 1.980776 1.067407 1.091136 1.241724 1.066883 1.243557 1.001764 1.010945 1.014016
 
 
