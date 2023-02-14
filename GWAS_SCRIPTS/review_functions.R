@@ -16,8 +16,12 @@ link_nearest_gene <- function(row)  {
   #                ID CHR      POS REF A1  A1_FREQ OBS_CT     BETA        SE           P
   # 145408   rs738409  22 44324727   G  G 0.213121  18771 0.828519 0.0564185 1.49139e-48
     
+  print(row)	
   marker_chrom = as.integer(row[2]) 		 # 22
   marker_posit = as.integer(row[3]) 		 # 44324727
+  #print(marker_chrom) #test
+  #print("----") #test
+  #print(marker_posit)
   gene_start = gentab[[marker_chrom]]$txStart    # int [1:3521] 24952687 25014434 25014548 25027973 33162236 33164366 33272860   
   gene_end = gentab[[marker_chrom]]$txEnd      	 # int [1:3521] 25197448 25197448 25197448 25197448 33761523  
   gene_positions = gentab[[marker_chrom]]$txMid  # int [1:3521] 25075068 25105941 ...   compare marker with this position (midpoint)!!
@@ -194,7 +198,8 @@ manhattan.plot<-function(chr, pos, pvalue,
 	# reduce number of points plotted
 	if(should.thin) {
 		thinned <- unique(data.frame(
-			logp=round(-log10(pvalue),thin.logp.places), 
+			#logp=round(-log10(pvalue),thin.logp.places),
+			logp=round(pvalue,thin.logp.places), 
 			pos=round(genpos,thin.pos.places), 
 			chr=chr,
 			grp=grp)
@@ -205,7 +210,8 @@ manhattan.plot<-function(chr, pos, pvalue,
 		grp <- thinned$grp
 		rm(thinned)
 	} else {
-		logp <- -log10(pvalue)
+		#logp <- -log10(pvalue)
+		logp <- pvalue
 	}
 	rm(pos, pvalue)
 	gc()

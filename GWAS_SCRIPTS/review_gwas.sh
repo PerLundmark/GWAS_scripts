@@ -17,30 +17,6 @@
 #
 # input: cojoed data or clumped data or just gwas data that haven't been pruned
 
-
-
-
-
-
-## +++ Hardcoded settings & and defaults 
-
-setfile=~/review_settings.sh
-if [ -s "${setfile}" ];then
-  source ${setfile}  # command line paramters overwrite these settings (but not all can be overwritten) 
-else
-  echo ""
-  echo "  ERROR (review_gwas.sh): Could not find the settings file \"${setfile}\"."
-  echo ""
-  exit 1  
-fi
-
-
-
-
-
-
-
- 
 ## +++ Command line parameters:
 
 prog=$( basename "$0" )
@@ -85,11 +61,6 @@ do
   shift
 done
 
-
-
-
-
-
 ## +++ Check if phenoname is a single word (no comma-separated list here!, just ONE phenoname)  
 
 nr=$( echo $phenoname | awk 'BEGIN{FS=","}{print NF}' )
@@ -99,88 +70,6 @@ if [ "${nr}" -ne 1 ]; then
   echo ""
   exit 1
 fi
-
-
-
-
-
-
-
-## +++ Check if the variables are defined  
-
-to_test=(ident phenoname chrom  minutes minspace)
-
-for var in  ${to_test[*]}     
-do
-  if [ -z ${!var+x} ];then
-    echo ""
-    echo "  ERROR (review_gwas.sh): mandatory variable $var is not defined."
-    echo ""
-    exit 1
-  fi    
-done
-
-
-
-
-
-
-
-
-
-
-## +++ Check for correct folder:
-
-folder=$( basename "`pwd`" ) 
-
-if [ "${folder}" != "${ident}" ];then
-  echo "" 
-  echo "  ERROR (review_gwas.sh): It seems you are in the wrong location." 
-  echo "         Current folder is: ${folder}"
-  echo "         Identifier is: ${ident}"
-  echo "" 
-  exit 1 
-fi
-
-
-
-
-
-
-
-## +++ Check if $phenoname is valid (user input)
-
-paramfile="${ident}_gwas_params.txt"
-
-if [ ! -s "$paramfile" ]; then
-  echo ""
-  echo "  ERROR (review_gwas.sh): Missing parameter file \"${paramfile}\""
-  echo ""
-  exit 1
-fi
-
-# possible entries in ${paramfile}:
-#     phenoname liv1,liv2,liv3,liv4,liv5,liv6,liv7,liv8,liv9,liv10      # LIV_MULT    
-#     phenoname vox1_exp   						# VOX1
-
-pstring=$( awk '{if($1 == "phenoname") print $2}' ${paramfile} )   	#  liv1,liv2,liv3,liv4,liv5,liv6,liv7,liv8,liv9,liv10  
-pname=$( echo $pstring | tr -s ',' '\t' )  			   	#  liv1 liv2 liv3 liv4 liv5 liv6 liv7 liv8 liv9 liv10
-parray=($pname)
-# echo " Number of elements in parray: ${#parray[*]}"   	   	#  10 ok  
-nr_hits=$( printf '%s\n' ${parray[@]} | egrep "^[[:space:]]*${phenoname}[[:space:]]*$" | wc -l )  # should exactly be 1
-if [ "${nr_hits}" -ne 1 ];then
-  echo ""
-  echo "  ERROR (run_cojo.sh): You propably picked a wrong phenotype name."
-  echo "  The word \"${phenoname}\" is not included as a phenoname entry in \"${paramfile}\""
-  echo ""
-  exit 1
-fi
-
-
-
-
-
-
 
 ## +++ Chromosomes  
       

@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 # Based on a script from uwe.menzel@medsci.uu.se
-# Adpated for nexflow use / PL
+# Adpated for nexflow / regenie use / PL
 
 
 ## +++ View GWAS results (html) 
@@ -13,7 +13,7 @@ args = commandArgs(trailingOnly = TRUE)
 
 if(length(args) < 4) {
   cat("\n")
-  cat("  Usage: review_gwas  <jobid>  <phenoname>  <chrom_list> <script_dir> <assoc_tool>\n")
+  cat("  Usage: review_gwas_regenie  <jobid>  <phenoname>  <chrom_list> <script_dir>\n")
   cat("\n")
   quit("no")
 }
@@ -26,7 +26,6 @@ phenoname = args[2]
 chrom_list = args[3]
 
 script_dir = args[4] # Added to avoid setting environment vars
-assoc_tool = args[5] # Plink or regenie?
 
 chromosomes = unlist(strsplit(chrom_list, ','))
 
@@ -49,8 +48,8 @@ suppressWarnings(library(WriteXLS))
 suppressWarnings(library(rmarkdown))
 suppressMessages(suppressWarnings(library(car)))  	# vif  
 suppressMessages(suppressWarnings(library(CMplot))) 	# CMplot
-# library(qqman)  # alternative for Manhattan and QQ-plot 
-# setDTthreads(threads = 0)   
+# library(qqman)  # alternative for Manhattan and QQ-plot
+# setDTthreads(threads = 0)
 
 
 
@@ -85,10 +84,6 @@ get_nr_from_sentence <- function(sentence) {   # extract a number from a charact
   return(nr)
 }
 
- 
- 
- 
- 
 
 
 ## +++ Read GWAS parameters: 
@@ -134,7 +129,7 @@ parameters = strsplit(parameters, "\\s+")
 
 
 # mandatory entries with 2 columns:
-to_assign = c("plink2_version", "genotype_id", "phenofile", "covarfile", "covarname", "mac", "maf", "vif", "sample_max_miss", "marker_max_miss", "hwe_pval", "machr2_low", "machr2_high")
+to_assign = c("plink2_version", "genotype_id", "phenofile", "covarfile", "covarname", "mac", "maf", "vif", "sample_max_miss", "marker_max_miss", "hwe_pval", "machr2_low", "machr2_high", "regenie_bsize1", "regenie_bsize2", "regenie_trait_type", "regenie_info", "regenie_covarnames_cat")
 for (var in to_assign) {
   row = unlist(parameters[grep(var, parameters)]) 
   if(length(row) == 0) stop(paste("\n\n  ERROR (review_gwas.R): The mandatory entry '", var, "' is missing in the parameter file '", parfile, "'.\n\n")) 
@@ -155,14 +150,14 @@ for (var in to_assign) {
   if(length(row) > 0) assign(row[1], row[2])  
 }
 
- 
+
 
 #TODO: Stage scripts in process space instead of read/copy from specific dir (copied anyway in staging, make sure not links!)
-# Remove all these script checks, have not real function in a controlled pipeline
+# Remove all these script checks, have no real function in a controlled pipeline
 
 # Rmarkdown templates :
 
-rmd = "gwas_report.Rmd"
+rmd = "gwas_report_regenie.Rmd"
 rmd_source = paste(scripts, rmd, sep = "/")
 rmd_main = paste(getwd(), rmd, sep = "/")
 if(!file.exists(rmd_source)) stop(paste("\n\n  ERROR (review_gwas.R): Rmarkdown template",  rmd_source,  "not found.\n\n"))
@@ -180,9 +175,6 @@ for (rmd in rmdfiles) {
 cat("\n")
 
 
-
-
-
 ## Check if the variables are defined:
 
 vars = c("p_threshold", "bandwidth", "annotation", "colvec", "max_xls", "ident", "phenoname") 
@@ -191,11 +183,9 @@ for (variable in vars) {
 }
 
 
-
-
 ## +++ Header for sbatch logfile:  ( ${log} in -e and -o option in sbatch call above )  
 
-cat("\n")			
+cat("\n")
 d = date()
 cat(paste("  Date:", d, "\n"))
 wd = getwd()
@@ -233,24 +223,27 @@ cat("\n")
 # OBS!! autosomes only! chrom X,Y won't work ! 
 
 
-#TODO: separate these for diff assoc modes
-pattern = paste0(ident, "_gwas_chr[[:digit:]]{1,2}\\.", phenoname, "\\.glm\\.(linear|logistic)$")
+pattern = paste(phenoname, "\\.regenie$", sep="")
 files_available = list.files(pattern = pattern)
 if(length(files_available) != length(chromosomes)) 
-	stop(paste("\n\n  ERROR (review_gwas.R) : It seems we do not have exactly one output file (.linear or .logistic) for each chromosome.\n\n")) 
-regtype = ifelse(length(grep("logistic$", files_available)) == 0, "linear", "logistic")  #TODO: Expand to cover regenie modes
+  stop(paste("\n\n  ERROR (review_gwas.R) : It seems we do not have exactly one output file for each chromosome.\n\n"))
+#regtype = ifelse(length(grep("logistic$", files_available)) == 0, "linear", "logistic")  #TODO: Expand to cover regenie modes
 
 
-gwas = data.frame(CHROM = integer(), POS = integer(), ID = character(), REF = character(), ALT1 = character(), A1 = character(), 
-		  A1_FREQ = numeric(), OBS_CT = integer(),  BETA = numeric(), SE = numeric(), P = numeric(), stringsAsFactors = FALSE) 
-		  		  
-for (chr in chromosomes)  {			      
-  
+#gwas = data.frame(CHROM = integer(), POS = integer(), ID = character(), REF = character(), ALT1 = character(), A1 = character(), 
+#		  A1_FREQ = numeric(), OBS_CT = integer(),  BETA = numeric(), SE = numeric(), P = numeric(), stringsAsFactors = FALSE) 
+
+
+gwas = data.frame(CHROM = integer(), POS = integer(), ID = character(), REF = character(),  A1 = character(), A1_FREQ = numeric(), INFO = numeric(), 
+                    OBS_CT = integer(), TEST = character(), BETA = numeric(), SE = numeric(), CHISQ = numeric(), LOG10P = numeric(), EXTRA = character(), P = numeric(), stringsAsFactors = FALSE)
+
+for (chr in chromosomes)  {
   cat(paste("\n  === Collecting results for chromosome", chr, "===\n"))    
-  regression_output = paste0(ident, "_gwas_chr", chr, ".", phenoname, ".glm.", regtype)   # name defined in "gwas_chr.sh" 
+  #regression_output = paste0(ident, "_gwas_chr", chr, ".", phenoname, ".glm.", regtype)   # name defined in "gwas_chr.sh" 
+  regression_output = paste0(ident, "_gwas_chr", chr, "_", phenoname, "_", phenoname, ".regenie")   # name defined in "gwas_chr.sh" 
     
   if(!file.exists(regression_output)) stop(paste("\n\n  ERROR (review_gwas.R) : Could not find the regression results: '", regression_output, "'.\n\n")) 
-  gwas_chr = fread(regression_output, nThread = 16, header = TRUE, check.names = FALSE, sep = "\t", showProgress = FALSE, stringsAsFactors = FALSE)
+  gwas_chr = fread(regression_output, nThread = 16, header = TRUE, check.names = FALSE, sep = " ", showProgress = FALSE, stringsAsFactors = FALSE)
   	
   # head(gwas_chr)  
   #
@@ -262,16 +255,26 @@ for (chr in chromosomes)  {
   # 5      22 16057417  rs62224618   C    T  T 0.1015400  18771 -0.1094630 0.0776205 0.158487
   # 6      22 16439593 rs199989910   A    G  A 0.0437326  18771 -0.1393800 0.1252730 0.265891
 
+  #regenie outputs -log10 P-vals, convert to harmonize with plink2 output
+  cat("\n")
+  cat(names(gwas_chr))
+  cat(paste(gwas_chr[1,], sep = " ", collapse = " "))
+  cat("\n")
+  # cat("\n", chromosomes)
+  # cat("\n", dim(gwas_chr), "\n")
+
+  gwas_chr$P <- 10^-as.numeric(gwas_chr$LOG10P)
+
   #gwas = rbind(gwas, gwas_chr, use.names = FALSE)  #  use.names = FALSE to avoid conflict between CHROM and #CHROM (1st element of column names)
-  gwas = rbind(gwas, gwas_chr) #dropped use.names option , added extra line in output!?
+  gwas = rbind(gwas, gwas_chr) #dropped use.names option , since it added extra line in output
      
   ## Logfile info:
   cat(paste("  Regression output:", regression_output, "\n"))  		 
-  cat(paste("  Number of markers in the regression output:", nrow(gwas_chr), "\n"))
+  cat(paste("  Number of markers in the association output:", nrow(gwas_chr), "\n"))
   num_NA = sum(is.na(gwas_chr$P))
-  cat(paste("  Number of unassigned p-values in the regression output:", num_NA, "\n"))
+  cat(paste("  Number of unassigned p-values in the association output:", num_NA, "\n"))
   num_signif = sum(gwas_chr$P < 5.0e-8, na.rm = TRUE)	
-  cat(paste("  Number of significant markers (5.0e-8) in the regression output:", num_signif, "\n")) 
+  cat(paste("  Number of significant markers (5.0e-8) in the association output:", num_signif, "\n")) 
 }
 
 rm(gwas_chr) 
@@ -292,21 +295,25 @@ rm(gwas_chr)
 #  $ P      : num  0.167 0.194 0.172 0.223 0.158 ...
 #  - attr(*, ".internal.selfref")=<externalptr> 
 
-# dim(gwas)     	#  14605760        8     14.6 million markers in global regression output (chromosomes 1-22)  
+# dim(gwas)     	#  14605760        8     14.6 million markers in global regression output (chromosomes 1-22)
 
-colnames(gwas) = c("CHROM", "POS", "ID", "REF", "ALT1", "A1", "A1_FREQ", "OBS_CT", "BETA", "SE", "P")
+colnames(gwas) = c("CHROM", "POS", "ID", "REF", "A1", "A1_FREQ", "INFO", "OBS_CT", "TEST", "BETA", "SE", "CHISQ", "LOG10P", "EXTRA", "P")
 
 nr_samples = unique(gwas$OBS_CT)
 
-cat(paste("\n\n  Total number of markers in the global regression output:", nrow(gwas), "(all chromosomes)\n"))
+cat(paste("\n\n  Total number of markers in the global association output:", nrow(gwas), "(all chromosomes)\n"))
 
 gwas_results = "gwas_results.RData"
-save(gwas, file = gwas_results)   # debugging   use "render_review.R" 
+
+
+#Adapt regenie output to plink format to allow same reporting script (table_unprunded.Rmd) ALTERING TO ALLOW BOTH P AND -10LOGP to avoid truncation of low values
+cat(paste("\n>>>",names(gwas), "<<<\n"))
+gwas_filt <- gwas[, c("CHROM", "POS", "ID", "REF", "A1", "A1", "A1_FREQ", "OBS_CT", "BETA", "SE", "P", "LOG10P")]
+names(gwas_filt) <- c("CHROM", "POS", "ID", "REF", "A1", "A1", "A1_FREQ", "OBS_CT", "BETA", "SE", "P", "LOG10P")
+
+save(gwas_filt, file = gwas_results)   # debugging   use "render_review.R"   ##Changed to gwas_filt
 cat(paste("  GWAS results saved to '", gwas_results, "' \n\n")) 
 # du -h gwas_results.RData  #  686M	gwas_results.RData   # TOO big to save 
-
-
-
 
 
 
@@ -320,87 +327,87 @@ cat(paste("  GWAS results saved to '", gwas_results, "' \n\n"))
 # VHWE    Variants removed due to Hardy-Weinberg exact test
 # VFREQ   Variants removed due to allele frequency threshold(s)
 # VIMP    Variants removed due to imputation quality filter (mach-r2)       
+
+
+#Regenie info:
+# pvar: n_snps
+# psam: n_samples
+# phenotyped inds wo missing data
+# inds used for analysis
+# ignored tests due to low MAC or info score
+#
+#
+#
+
+
        
-filtered = data.frame(CHROM = integer(), SGENO = integer(), P1 = numeric(), VGENO = integer(), P2 = numeric(), VHWE = integer(), P3 = numeric(), VFREQ = integer(), P4 = numeric(),  VIMP = integer(), P5 = numeric())
+
+#old plink ver for reference
+#filtered = data.frame(CHROM = integer(), SGENO = integer(), P1 = numeric(), VGENO = integer(), P2 = numeric(), VHWE = integer(), P3 = numeric(), VFREQ = integer(), P4 = numeric(),  VIMP = integer(), P5 = numeric())
+
+filtered = data.frame(CHROM = integer(), N_SAMPLES = integer(), N_SNPS = integer(), PHENO_SAMPLES_NOMISS = integer(), COVAR_SAMPLES = integer(), ANALYSIS_SAMPLES = integer(), SKIPPED_MAC_INFO = integer())
 
 for (chrom in chromosomes)  {
   
-  cat(paste("  Identifying removed samples/variants on chromosome", chrom, "\n")) 
+  cat(paste("  Summary of samples/variants on chromosome", chrom, "\n")) 
   
   # + Load logfile
-  log = paste0(ident, "_gwas_chrom", chrom, ".log")  #   "liver10_gwas_chrom21.log"
+  #log = paste0(ident, "_gwas_chr", chrom, ".log")  #   Reading regenie log
+  log = paste0(ident, "_gwas_chr", chrom, "_", phenoname, ".log")  #   Reading regenie log
   if(!file.exists(log)) stop(paste("\n\n  ERROR (review_gwas.R): Logfile", log, "not found.\n\n")) 
-  lines <- readLines(log)  # 
-  nr_lines = length(lines) 
+  lines <- readLines(log)
+  nr_lines = length(lines)
    
   # + Find out how many variants are on this chromsome:
-  variants = grep("variants loaded", lines, ignore.case = FALSE, value = TRUE, fixed = TRUE)
+  variants = grep("n_snps", lines, ignore.case = FALSE, value = TRUE, fixed = TRUE)
   nr_variants_chrom = get_nr_from_sentence(variants)
-  cat(paste("    Number of variants on this chromosome:", nr_variants_chrom, "\n"))  # 1261158 
-    
-  #  + Extract all lines containing "removed" from logfile
-  removed = grep("removed", lines, ignore.case = FALSE, value = TRUE, fixed = TRUE) 
-  # [1] "0 samples removed due to missing genotype data (--mind)."                      "--geno: 12143 variants removed due to missing genotype data."                 
-  # [3] "--hwe: 354 variants removed due to Hardy-Weinberg exact test (founders only)." "2320771 variants removed due to allele frequency threshold(s)"                
-  # [5] "--mach-r2-filter: 3947 variants removed."
-  nr_removed = length(removed) 
-   
+  cat(paste("    Number of variants loaded for this chromosome:", nr_variants_chrom, "\n"))
+
   # + Samples:
-  removed_samples = grep("samples", removed, ignore.case = FALSE, value = TRUE, fixed = TRUE)   # [1] "0 samples removed due to missing genotype data (--mind)."
-  nr_removed_samples = get_nr_from_sentence(removed_samples)
-  perc_removed_samples = signif(nr_removed_samples*100/nr_samples, 2)  # nr_samples known in "review_gwas.R" 
-   
-  # + Variants:
-  removed_variants = grep("variants", removed, ignore.case = FALSE, value = TRUE, fixed = TRUE)
-  # [1] "--geno: 12143 variants removed due to missing genotype data."                  "--hwe: 354 variants removed due to Hardy-Weinberg exact test (founders only)."
-  # [3] "2320771 variants removed due to allele frequency threshold(s)"                 "--mach-r2-filter: 3947 variants removed."
-  
-  missing_genotype = grep("genotype", removed_variants, ignore.case = FALSE, value = TRUE, fixed = TRUE)
-  # "--geno: 12143 variants removed due to missing genotype data."
-  nr_missing_genotype = get_nr_from_sentence(missing_genotype)
-  perc_missing_genotype = signif(nr_missing_genotype*100/nr_variants_chrom, 2)
-  # cat(paste("    Variants removed due to missing genotype:", nr_missing_genotype, " (", perc_missing_genotype ,"%)\n"))     # 12143   ok 
-  
-  hwe_removed = grep("Weinberg", removed_variants, ignore.case = FALSE, value = TRUE, fixed = TRUE)
-  # "--hwe: 354 variants removed due to Hardy-Weinberg exact test (founders only)."
-  nr_hwe_removed = get_nr_from_sentence(hwe_removed)
-  perc_hwe_removed = signif(nr_hwe_removed*100/nr_variants_chrom, 2)
-  # cat(paste("    Variants removed due to Hardy-Weinberg exact test:", nr_hwe_removed, " (", perc_hwe_removed ,"%)\n"))     # 354 ok  
-  
-  freq_removed = grep("frequency", removed_variants, ignore.case = FALSE, value = TRUE, fixed = TRUE)
-  # "2320771 variants removed due to allele frequency threshold(s)"
-  nr_freq_removed = get_nr_from_sentence(freq_removed)
-  perc_freq_removed = signif(nr_freq_removed*100/nr_variants_chrom, 2)
-  # cat(paste("    Variants removed due to allele frequency threshold(s):", nr_freq_removed, " (", perc_freq_removed ,"%)\n"))     # 2320771  ok   
-  
-  machr2_removed = grep("mach-r2", removed_variants, ignore.case = FALSE, value = TRUE, fixed = TRUE)
-  # "--mach-r2-filter: 3947 variants removed."  
-  nr_machr2_removed = get_nr_from_sentence(machr2_removed)
-  perc_machr2_removed = signif(nr_machr2_removed*100/nr_variants_chrom, 2)
-  # cat(paste("    Variants removed due to mach-r2-filter:", nr_machr2_removed, " (", perc_machr2_removed ,"%)\n"))     # 3947   ok 
-  
+  samples = grep("n_samples", lines, ignore.case = FALSE, value = TRUE, fixed = TRUE)
+  nr_samples_chrom = get_nr_from_sentence(samples)
+  cat(paste("    Number of samples loaded for this chromosome:", nr_samples_chrom, "\n"))
+
+  #samples w phenotypes 
+  pheno_samples = grep("phenotyped individuals", lines, ignore.case = FALSE, value = TRUE, fixed = TRUE)
+  nr_pheno_samples = get_nr_from_sentence(pheno_samples)
+  cat(paste("    Number of samples with complete phenotypes for this chromosome:", nr_pheno_samples, "\n"))
+
+  #samples w covars
+  covar_samples = grep("individuals with covariate data", lines, ignore.case = FALSE, value = TRUE, fixed = TRUE)
+  nr_covar_samples = get_nr_from_sentence(covar_samples)
+  cat(paste("    Number of samples with covariates for this chromosome:", nr_covar_samples, "\n"))
+
+  #samples used in analysis
+  analysis_samples = grep("individuals used in analysis", lines, ignore.case = FALSE, value = TRUE, fixed = TRUE)
+  nr_analysis_samples = get_nr_from_sentence(analysis_samples)
+  cat(paste("    Number of samples used in analysis for this chromosome:", nr_analysis_samples, "\n"))
+
+  #variant removed due to MAC / INFO
+  mac_info_removed = grep("Number of ignored tests due to low MAC or info score", lines, ignore.case = FALSE, value = TRUE, fixed = TRUE)
+  nr_mac_info_removed = get_nr_from_sentence(mac_info_removed)
+  cat(paste("    Number of variants removed for this chromosome due to MAC and INFO score:", nr_mac_info_removed, "\n"))
+
   # + add to frame
   # new_row = data.frame(CHROM = chrom, SGENO = nr_removed_samples, VGENO = nr_missing_genotype, VHWE = nr_hwe_removed, VFREQ = nr_freq_removed,  VIMP = nr_machr2_removed)
-  new_row = data.frame(CHROM = chrom, SGENO = nr_removed_samples, P1 = perc_removed_samples, VGENO = nr_missing_genotype, P2 = perc_missing_genotype, 
-                       VHWE = nr_hwe_removed, P3 = perc_hwe_removed, VFREQ = nr_freq_removed, P4 = perc_freq_removed,  VIMP = nr_machr2_removed, P5 = perc_machr2_removed)  
-  filtered = rbind(filtered, new_row)                     
+  new_row = data.frame(CHROM = chrom, N_SAMPLES = nr_samples_chrom, N_SNPS = nr_variants_chrom, PHENO_SAMPLES_NOMISS = nr_pheno_samples, COVAR_SAMPLES = nr_covar_samples, 
+                       ANALYSIS_SAMPLES = nr_analysis_samples, SKIPPED_MAC_INFO = nr_mac_info_removed)  
+  filtered = rbind(filtered, new_row)
 }
 
 cat("\n")
-cat(paste("  Samples removed due to missing genotype:", sum(filtered$SGENO), " (", signif(mean(filtered$P1),3) ,"%)\n")) 
-cat(paste("  Variants removed due to missing genotype:", sum(filtered$VGENO), " (", signif(mean(filtered$P2),3) ,"%)\n"))     
-cat(paste("  Variants removed due to Hardy-Weinberg exact test:", sum(filtered$VHWE), " (", signif(mean(filtered$P3),3) ,"%)\n"))     
-cat(paste("  Variants removed due to allele frequency threshold(s):", sum(filtered$VFREQ), " (", signif(mean(filtered$P4),3) ,"%)\n"))       
-cat(paste("  Variants removed due to mach-r2-filter:", sum(filtered$VIMP), " (", signif(mean(filtered$P5),3) ,"%)\n"))    
+cat(paste("  Total number of variants loaded:", sum(filtered$N_SNPS), "\n"))
+cat(paste("  Total number of variants removed due to MAC and INFO score", sum(filtered$SKIPPED_MAC_INFO), "\n"))
 cat("\n")
 
-new_row = data.frame(CHROM = "ALL", SGENO = sum(filtered$SGENO), P1 = signif(mean(filtered$P1),3), VGENO = sum(filtered$VGENO), 
-                     P2 = signif(mean(filtered$P2),3), VHWE = sum(filtered$VHWE), P3 = signif(mean(filtered$P3),3), VFREQ = sum(filtered$VFREQ), 
-                     P4 = signif(mean(filtered$P4),3), VIMP = sum(filtered$VIMP), P5 = signif(mean(filtered$P5),3))
-filtered = rbind(filtered, new_row)
-colnames(filtered) = c("CHROM", "SGENO", "%", "VGENO", "%", "VHWE", "%", "VFREQ", "%", "VIMP", "%")
+#new_row = data.frame(CHROM = "ALL", SGENO = sum(filtered$SGENO), P1 = signif(mean(filtered$P1),3), VGENO = sum(filtered$VGENO), 
+#                     P2 = signif(mean(filtered$P2),3), VHWE = sum(filtered$VHWE), P3 = signif(mean(filtered$P3),3), VFREQ = sum(filtered$VFREQ), 
+#                     P4 = signif(mean(filtered$P4),3), VIMP = sum(filtered$VIMP), P5 = signif(mean(filtered$P5),3))
+#filtered = rbind(filtered, new_row)
+#colnames(filtered) = c("CHROM", "SGENO", "%", "VGENO", "%", "VHWE", "%", "VFREQ", "%", "VIMP", "%")
+#colnames(filtered) = c("CHROM", "SGENO", "%", "VGENO", "%", "VHWE", "%", "VFREQ", "%", "VIMP", "%")
 
-# filtered 
+# filtered
 #
 #    CHROM SGENO %  VGENO     % VHWE      %    VFREQ    %    VIMP    %
 # 1      1     0 0  41844 0.570  407 0.0055  6224102 84.0  165251 2.20
@@ -433,10 +440,6 @@ save(filtered, file = filtered_file)
 cat(paste("  Filter statistics saved to '", filtered_file, "'. \n\n"))
 
 
-
-
-
-
 ## +++ To get the residuals, run a linear/logistic regression with the same model as in GWAS before
 #
 #      see also "gwas_diagnose.sh", better "gwas_diagnose_nomarker.sh
@@ -446,324 +449,323 @@ cat(paste("  Filter statistics saved to '", filtered_file, "'. \n\n"))
 # covarname="PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10,array,sex,age"
 
 
-cat("  Running regression on covariates ...  ") 
-start_time = Sys.time() 
+####### Start comment old code for regression diagnosis
+# cat("  Running regression on covariates ...  ") 
+# start_time = Sys.time() 
 
 
-# + Load phenotype file:
+# # + Load phenotype file:
 
-if(file.exists(phenofile)) { 
-  phenotype = read.table(phenofile, header = TRUE, sep = "\t", comment.char = "", stringsAsFactors = FALSE)  
-} else {
-  stop(paste("\n\n  ERROR (review_gwas.R): Phenotype file '", phenofile, "' not found.\n\n"))
-}
+# if(file.exists(phenofile)) { 
+#   phenotype = read.table(phenofile, header = TRUE, sep = "\t", comment.char = "", stringsAsFactors = FALSE)  
+# } else {
+#   stop(paste("\n\n  ERROR (review_gwas.R): Phenotype file '", phenofile, "' not found.\n\n"))
+# }
 
-# str(phenotype)
-# 'data.frame':   38948 obs. of  3 variables:
-#  $ X.FID      : int  1000015 1000401 1000435 1000456 1000493 1000795 1000843 1000885 1001070 1001146 ...
-#  $ IID        : int  1000015 1000401 1000435 1000456 1000493 1000795 1000843 1000885 1001070 1001146 ...
-#  $ liver_fat_a: num  2.6 5.53 5.39 3.66 3.61 ...
-
-
-if(phenoname %in% colnames(phenotype)) {
-  y = phenotype[,c("IID", phenoname)]   # dependent variable  
-} else {
-  stop(paste("\n\n  ERROR (review_gwas.R) : The file '", phenofile, "' does not have a '", phenoname, "' column.\n\n"))
-}
-
-# str(y)
-# 'data.frame':   38948 obs. of  2 variables:
-#  $ IID        : int  1000015 1000401 1000435 1000456 1000493 1000795 1000843 1000885 1001070 1001146 ...
-#  $ liver_fat_a: num  2.6 5.53 5.39 3.66 3.61 ...
-
-rownames(y) = y$IID
-
-# head(y)
-#             IID liver_fat_a
-# 1000015 1000015    2.604362
-# 1000401 1000401    5.534768
-# 1000435 1000435    5.393000
-# 1000456 1000456    3.660239
-# 1000493 1000493    3.610108
-# 1000795 1000795    1.443066
+# # str(phenotype)
+# # 'data.frame':   38948 obs. of  3 variables:
+# #  $ X.FID      : int  1000015 1000401 1000435 1000456 1000493 1000795 1000843 1000885 1001070 1001146 ...
+# #  $ IID        : int  1000015 1000401 1000435 1000456 1000493 1000795 1000843 1000885 1001070 1001146 ...
+# #  $ liver_fat_a: num  2.6 5.53 5.39 3.66 3.61 ...
 
 
+# if(phenoname %in% colnames(phenotype)) {
+#   y = phenotype[,c("IID", phenoname)]   # dependent variable  
+# } else {
+#   stop(paste("\n\n  ERROR (review_gwas.R) : The file '", phenofile, "' does not have a '", phenoname, "' column.\n\n"))
+# }
 
-# + Load covariate file:
+# # str(y)
+# # 'data.frame':   38948 obs. of  2 variables:
+# #  $ IID        : int  1000015 1000401 1000435 1000456 1000493 1000795 1000843 1000885 1001070 1001146 ...
+# #  $ liver_fat_a: num  2.6 5.53 5.39 3.66 3.61 ...
 
-if(file.exists(covarfile)) { 
-  covariates = read.table(covarfile, header = TRUE, sep = "\t", comment.char = "", stringsAsFactors = FALSE)  
-} else {
-  stop(paste("\n\n  ERROR (review_gwas.R) : Could not find the covariate file: '", covarfile, "'.\n\n"))
-}
+# rownames(y) = y$IID
 
-# str(covariates)
-# 'data.frame':   337482 obs. of  16 variables:
-#  $ X.FID      : int  1000027 1000039 1000040 1000053 1000064 1000071 1000088 1000096 1000125 1000154 ...
-#  $ IID        : int  1000027 1000039 1000040 1000053 1000064 1000071 1000088 1000096 1000125 1000154 ...
-#  $ PC1        : num  -14.21 -14.88 -9.32 -13.27 -11.91 ...
-#  $ PC2        : num  4.89 5.5 3.14 2.01 6.89 ...
-#  $ PC3        : num  -1.077 -0.564 1.179 -3.32 1.158 ...
-#  $ PC4        : num  1.493 0.372 -0.766 1.187 -3.114 ...
-#  $ PC5        : num  -4.769 4.594 -2.136 0.177 -5.644 ...
-#  $ PC6        : num  -2.1676 -0.5263 0.658 0.0638 -0.6852 ...
-#  $ PC7        : num  0.51 -1.225 2.561 0.422 -0.238 ...
-#  $ PC8        : num  -1.802 1.442 -0.262 0.754 2.738 ...
-#  $ PC9        : num  5.21 1.52 -2.84 4.79 2.2 ...
-#  $ PC10       : num  1.918 -1 -1.332 0.301 -2.087 ...
-#  $ array      : int  3 2 3 3 2 3 1 1 3 2 ...
-#  $ sex        : int  0 0 0 0 1 0 0 0 0 1 ...
-#  $ age        : num  55.3 62.3 60.1 64.1 54.3 ...
-#  $ age_squared: num  3054 3876 3609 4105 2953 ...
-
-covars = unlist(strsplit(covarname, ","))  # "PC1"   "PC2"   "PC3"   "PC4"   "PC5"   "PC6"   "PC7"   "PC8"   "PC9"   "PC10"  "array" "sex"   "age"
-
-# check covarname
-for (cov in covars) {
-  # print(cov)
-  # print(cov %in% colnames(covariates))
-  if(!cov %in% colnames(covariates)) stop(paste("\n\n  ERROR (review_gwas.R) : The covariate '", cov, "' is not included in '", covarfile, "'.\n\n"))
-}
-
-covariates = covariates[,c("IID", covars)]   # keep only necessary lines; age_squared might not be used 
-rownames(covariates) = covariates$IID
-
-# head(covariates)
-#
-#             IID       PC1     PC2       PC3       PC4       PC5        PC6       PC7       PC8      PC9      PC10 array sex   age
-# 1000027 1000027 -14.20630 4.88676 -1.077420  1.493080 -4.769030 -2.1676300  0.509630 -1.802300  5.21144  1.918070     3   0 55.27
-# 1000039 1000039 -14.87840 5.49553 -0.564267  0.372418  4.593710 -0.5263310 -1.224820  1.441580  1.51997 -1.000270     2   0 62.26
-# 1000040 1000040  -9.31768 3.14434  1.179110 -0.766216 -2.136190  0.6580010  2.561440 -0.261769 -2.83988 -1.332040     3   0 60.07
-# 1000053 1000053 -13.26520 2.01425 -3.319700  1.187170  0.176755  0.0637719  0.422459  0.754097  4.79254  0.301277     3   0 64.07
-# 1000064 1000064 -11.91490 6.88527  1.157530 -3.114030 -5.644040 -0.6851510 -0.237977  2.737650  2.19642 -2.087390     2   1 54.34
-# 1000071 1000071 -10.44720 4.60355 -1.622490 -2.185330 -2.757930  0.5514320 -1.329740 -1.472890  1.92260  1.138680     3   0 61.17
-
-
-stop_time = Sys.time()
-diff_time = stop_time - start_time 
-cat(paste("Done in", round(diff_time,2), "seconds.\n"))
+# # head(y)
+# #             IID liver_fat_a
+# # 1000015 1000015    2.604362
+# # 1000401 1000401    5.534768
+# # 1000435 1000435    5.393000
+# # 1000456 1000456    3.660239
+# # 1000493 1000493    3.610108
+# # 1000795 1000795    1.443066
 
 
 
+# # + Load covariate file:
+
+# if(file.exists(covarfile)) { 
+#   covariates = read.table(covarfile, header = TRUE, sep = "\t", comment.char = "", stringsAsFactors = FALSE)  
+# } else {
+#   stop(paste("\n\n  ERROR (review_gwas.R) : Could not find the covariate file: '", covarfile, "'.\n\n"))
+# }
+
+# # str(covariates)
+# # 'data.frame':   337482 obs. of  16 variables:
+# #  $ X.FID      : int  1000027 1000039 1000040 1000053 1000064 1000071 1000088 1000096 1000125 1000154 ...
+# #  $ IID        : int  1000027 1000039 1000040 1000053 1000064 1000071 1000088 1000096 1000125 1000154 ...
+# #  $ PC1        : num  -14.21 -14.88 -9.32 -13.27 -11.91 ...
+# #  $ PC2        : num  4.89 5.5 3.14 2.01 6.89 ...
+# #  $ PC3        : num  -1.077 -0.564 1.179 -3.32 1.158 ...
+# #  $ PC4        : num  1.493 0.372 -0.766 1.187 -3.114 ...
+# #  $ PC5        : num  -4.769 4.594 -2.136 0.177 -5.644 ...
+# #  $ PC6        : num  -2.1676 -0.5263 0.658 0.0638 -0.6852 ...
+# #  $ PC7        : num  0.51 -1.225 2.561 0.422 -0.238 ...
+# #  $ PC8        : num  -1.802 1.442 -0.262 0.754 2.738 ...
+# #  $ PC9        : num  5.21 1.52 -2.84 4.79 2.2 ...
+# #  $ PC10       : num  1.918 -1 -1.332 0.301 -2.087 ...
+# #  $ array      : int  3 2 3 3 2 3 1 1 3 2 ...
+# #  $ sex        : int  0 0 0 0 1 0 0 0 0 1 ...
+# #  $ age        : num  55.3 62.3 60.1 64.1 54.3 ...
+# #  $ age_squared: num  3054 3876 3609 4105 2953 ...
+
+# covars = unlist(strsplit(covarname, ","))  # "PC1"   "PC2"   "PC3"   "PC4"   "PC5"   "PC6"   "PC7"   "PC8"   "PC9"   "PC10"  "array" "sex"   "age"
+
+# # check covarname
+# for (cov in covars) {
+#   # print(cov)
+#   # print(cov %in% colnames(covariates))
+#   if(!cov %in% colnames(covariates)) stop(paste("\n\n  ERROR (review_gwas.R) : The covariate '", cov, "' is not included in '", covarfile, "'.\n\n"))
+# }
+
+# covariates = covariates[,c("IID", covars)]   # keep only necessary lines; age_squared might not be used 
+# rownames(covariates) = covariates$IID
+
+# # head(covariates)
+# #
+# #             IID       PC1     PC2       PC3       PC4       PC5        PC6       PC7       PC8      PC9      PC10 array sex   age
+# # 1000027 1000027 -14.20630 4.88676 -1.077420  1.493080 -4.769030 -2.1676300  0.509630 -1.802300  5.21144  1.918070     3   0 55.27
+# # 1000039 1000039 -14.87840 5.49553 -0.564267  0.372418  4.593710 -0.5263310 -1.224820  1.441580  1.51997 -1.000270     2   0 62.26
+# # 1000040 1000040  -9.31768 3.14434  1.179110 -0.766216 -2.136190  0.6580010  2.561440 -0.261769 -2.83988 -1.332040     3   0 60.07
+# # 1000053 1000053 -13.26520 2.01425 -3.319700  1.187170  0.176755  0.0637719  0.422459  0.754097  4.79254  0.301277     3   0 64.07
+# # 1000064 1000064 -11.91490 6.88527  1.157530 -3.114030 -5.644040 -0.6851510 -0.237977  2.737650  2.19642 -2.087390     2   1 54.34
+# # 1000071 1000071 -10.44720 4.60355 -1.622490 -2.185330 -2.757930  0.5514320 -1.329740 -1.472890  1.92260  1.138680     3   0 61.17
 
 
-## +++ Merge response (y) and covariates to dataframe 
-
-data = merge(y, covariates, by = "row.names")  # see "gwas_diagnose_nomarker.R"
-
-data$IID.x <- NULL 
-data$IID.y <- NULL
-
-# colnames(data)[1]  # Row.names
-colnames(data)[1] = "IID"
-rownames(data) = data$IID
-
-# head(data)
-#             IID liver_fat_a       PC1     PC2       PC3      PC4       PC5       PC6       PC7       PC8       PC9       PC10 array sex
-# 1000435 1000435    5.393000  -7.99529 2.98206  1.897440 -4.33654   8.86341 -2.342750 -3.118760 -0.296383  1.915610 -0.4900740     3   0
-# 1000493 1000493    3.610108 -11.61820 6.30782 -4.131040  3.38008   3.91680 -1.522880 -0.920577 -0.624074 -0.769152 -1.4455700     2   1
-# 1000843 1000843    9.580051 -13.20730 1.52633 -1.437160  1.53112  -5.19869 -0.489964 -1.351520 -0.300059  1.129820 -0.2851930     3   1
-# 1001070 1001070    1.269000 -12.11400 5.29836 -0.480804 -2.07305  -3.99894 -0.645587  4.589100 -1.998630 -1.794910 -0.0914199     3   0
-# 1001146 1001146    1.401959 -11.06670 1.22650 -0.472677  1.72542 -12.05320 -2.383790  1.462470 -3.447000  2.393600  0.3356860     3   1
-# 1001271 1001271    1.536000 -11.80260 2.91145  0.489881 -3.00130  -5.81333 -2.164130  3.011010 -0.999236  1.437660 -3.2000799     3   0
-#           age
-# 1000435 51.21
-# 1000493 53.99
-# 1000843 58.45
-# 1001070 52.17
-# 1001146 66.94
-# 1001271 40.72
-
-
-
-# OBS!: vif (below) does not work if one or more variables are constant:  "Error in vif.default(lmout) : there are aliased coefficients in the model"   
-#   remove constant variables:    
-
-logarr = apply(data, 2, function(x) { var(x, na.rm = TRUE) == 0} )
-nr_zero = sum(logarr)
-
-if(nr_zero > 0)  {
-  zerovars = colnames(data)[logarr] 
-  cat(paste0("\n  WARNING: You have ", nr_zero, " constant variable(s) in the data: '", paste(zerovars, collapse = " "), "'. The variable(s) will be removed.\n\n"))
-  data = data[, !logarr]
-  if(ncol(data) < 3) stop(paste("\n\n  ERROR (review_gwas.R) : It seems you have no independent variables left.\n\n"))
-  covars = setdiff(covars, zerovars) # remove from covars
-}
-
-
-datafile = paste(ident, phenoname, "regression_frame.RData", sep = "_")  
-save(data, file = datafile)  
-cat(paste("  Regression input frame saved to '", datafile, "'.\n"))
+# stop_time = Sys.time()
+# diff_time = stop_time - start_time 
+# cat(paste("Done in", round(diff_time,2), "seconds.\n"))
 
 
 
 
-# + Linear/Logistic Regression with lm()/glm()
 
-# covars # "PC1"   "PC2"   "PC3"   "PC4"   "PC5"   "PC6"   "PC7"   "PC8"   "PC9"   "PC10"  "array" "sex"   "age"   defined above
+# ## +++ Merge response (y) and covariates to dataframe 
 
-cform = paste(covars, collapse = " + ")  # "PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + array + sex + age"
-form = paste(phenoname, "~", cform)  # WITHOUT marker
-formula = as.formula(form) # liver_fat_a ~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + array + sex + age 
-cat(paste("\n  Regression using:\n ", form, "\n\n"))
+# data = merge(y, covariates, by = "row.names")  # see "gwas_diagnose_nomarker.R"
+
+# data$IID.x <- NULL 
+# data$IID.y <- NULL
+
+# # colnames(data)[1]  # Row.names
+# colnames(data)[1] = "IID"
+# rownames(data) = data$IID
+
+# # head(data)
+# #             IID liver_fat_a       PC1     PC2       PC3      PC4       PC5       PC6       PC7       PC8       PC9       PC10 array sex
+# # 1000435 1000435    5.393000  -7.99529 2.98206  1.897440 -4.33654   8.86341 -2.342750 -3.118760 -0.296383  1.915610 -0.4900740     3   0
+# # 1000493 1000493    3.610108 -11.61820 6.30782 -4.131040  3.38008   3.91680 -1.522880 -0.920577 -0.624074 -0.769152 -1.4455700     2   1
+# # 1000843 1000843    9.580051 -13.20730 1.52633 -1.437160  1.53112  -5.19869 -0.489964 -1.351520 -0.300059  1.129820 -0.2851930     3   1
+# # 1001070 1001070    1.269000 -12.11400 5.29836 -0.480804 -2.07305  -3.99894 -0.645587  4.589100 -1.998630 -1.794910 -0.0914199     3   0
+# # 1001146 1001146    1.401959 -11.06670 1.22650 -0.472677  1.72542 -12.05320 -2.383790  1.462470 -3.447000  2.393600  0.3356860     3   1
+# # 1001271 1001271    1.536000 -11.80260 2.91145  0.489881 -3.00130  -5.81333 -2.164130  3.011010 -0.999236  1.437660 -3.2000799     3   0
+# #           age
+# # 1000435 51.21
+# # 1000493 53.99
+# # 1000843 58.45
+# # 1001070 52.17
+# # 1001146 66.94
+# # 1001271 40.72
 
 
-if(regtype == "linear")  {
-  lmout = lm(formula, data = data) 
-}
-if(regtype == "logistic")  { 
-  data[phenoname] = data[phenoname] - 1  # plink2 uses 1 and 2 but glm limits to 0..1 
-  lmout = glm(formula, data = data, family = "binomial")
-}
 
-# summary(lmout)
+# # OBS!: vif (below) does not work if one or more variables are constant:  "Error in vif.default(lmout) : there are aliased coefficients in the model"   
+# #   remove constant variables:    
+
+# logarr = apply(data, 2, function(x) { var(x, na.rm = TRUE) == 0} )
+# nr_zero = sum(logarr)
+
+# if(nr_zero > 0)  {
+#   zerovars = colnames(data)[logarr] 
+#   cat(paste0("\n  WARNING: You have ", nr_zero, " constant variable(s) in the data: '", paste(zerovars, collapse = " "), "'. The variable(s) will be removed.\n\n"))
+#   data = data[, !logarr]
+#   if(ncol(data) < 3) stop(paste("\n\n  ERROR (review_gwas.R) : It seems you have no independent variables left.\n\n"))
+#   covars = setdiff(covars, zerovars) # remove from covars
+# }
+
+
+# datafile = paste(ident, phenoname, "regression_frame.RData", sep = "_")  
+# save(data, file = datafile)  
+# cat(paste("  Regression input frame saved to '", datafile, "'.\n"))
 
 
 
-# Save the residuals
 
-if(regtype == "linear") residuals = residuals(lmout)
-if(regtype == "logistic") residuals = residuals(lmout, type = "pearson")  # type = "deviance"
+# # + Linear/Logistic Regression with lm()/glm()
 
-#  str(residuals)
-#  Named num [1:27243] 2.242 -0.967 5.251 -2.111 -2.976 ...
-#  - attr(*, "names")= chr [1:27243] "1000435" "1000493" "1000843" "1001070" ...
+# # covars # "PC1"   "PC2"   "PC3"   "PC4"   "PC5"   "PC6"   "PC7"   "PC8"   "PC9"   "PC10"  "array" "sex"   "age"   defined above
 
-residfile = paste(ident, phenoname, "regression_resid.RData", sep = "_")  
-save(residuals, file = residfile)  
-cat(paste("  Residuals saved to '", residfile, "'.\n"))
+# cform = paste(covars, collapse = " + ")  # "PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + array + sex + age"
+# form = paste(phenoname, "~", cform)  # WITHOUT marker
+# formula = as.formula(form) # liver_fat_a ~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + array + sex + age 
+# cat(paste("\n  Regression using:\n ", form, "\n\n"))
+
+
+# if(regtype == "linear")  {
+#   lmout = lm(formula, data = data) 
+# }
+# if(regtype == "logistic")  { 
+#   data[phenoname] = data[phenoname] - 1  # plink2 uses 1 and 2 but glm limits to 0..1 
+#   lmout = glm(formula, data = data, family = "binomial")
+# }
+
+# # summary(lmout)
+
+
+
+# # Save the residuals
+
+# if(regtype == "linear") residuals = residuals(lmout)
+# if(regtype == "logistic") residuals = residuals(lmout, type = "pearson")  # type = "deviance"
+
+# #  str(residuals)
+# #  Named num [1:27243] 2.242 -0.967 5.251 -2.111 -2.976 ...
+# #  - attr(*, "names")= chr [1:27243] "1000435" "1000493" "1000843" "1001070" ...
+
+# residfile = paste(ident, phenoname, "regression_resid.RData", sep = "_")  
+# save(residuals, file = residfile)  
+# cat(paste("  Residuals saved to '", residfile, "'.\n"))
 
 
  
-# + Some metrics for the linear regression: 
+# # + Some metrics for the linear regression: 
 
-if(regtype == "linear")  { 
-  sigma = summary(lmout)$sigma 				# standard deviation of error term		      
-  fstatistic = summary(lmout)$fstatistic[1]		# 
-  r.squared = summary(lmout)$r.squared  			# 	      
-  adj.r.squared = summary(lmout)$adj.r.squared 		#     
-  aic = extractAIC(lmout)[2] 				# Akaike information criterion 
+# if(regtype == "linear")  { 
+#   sigma = summary(lmout)$sigma 				# standard deviation of error term		      
+#   fstatistic = summary(lmout)$fstatistic[1]		# 
+#   r.squared = summary(lmout)$r.squared  			# 	      
+#   adj.r.squared = summary(lmout)$adj.r.squared 		#     
+#   aic = extractAIC(lmout)[2] 				# Akaike information criterion 
 
-  metric = c("sigma", "Fstat", "Rsquared", "Rsq.adj", "AIC")
-  mvalue = c(sigma, fstatistic, r.squared, adj.r.squared, aic) 
+#   metric = c("sigma", "Fstat", "Rsquared", "Rsq.adj", "AIC")
+#   mvalue = c(sigma, fstatistic, r.squared, adj.r.squared, aic) 
 
-  # mvalue = signif(mvalue, 4)     
-  metric.df = data.frame(value = mvalue) 
-  rownames(metric.df) = metric
+#   # mvalue = signif(mvalue, 4)     
+#   metric.df = data.frame(value = mvalue) 
+#   rownames(metric.df) = metric
 
-  # metric.df
-  #                 value
-  # sigma    4.215789e+00
-  # Fstat    4.161848e+01
-  # Rsquared 1.948288e-02
-  # Rsq.adj  1.901474e-02
-  # AIC      7.841046e+04
+#   # metric.df
+#   #                 value
+#   # sigma    4.215789e+00
+#   # Fstat    4.161848e+01
+#   # Rsquared 1.948288e-02
+#   # Rsq.adj  1.901474e-02
+#   # AIC      7.841046e+04
 
-  metricfile = paste(ident, phenoname, "regression_metric.RData", sep = "_")
-  save(metric.df, file = metricfile)  
-  cat(paste("  Regression metrics frame saved to '", metricfile, "'.\n"))
-} else {
-  metricfile = "none"
-}
-
-
-
-# + Regression results:
-
-lm_table = as.data.frame(summary(lmout)$coefficients) 
-lmfile = paste(ident, phenoname, "regression_lmtab.RData", sep = "_") 	
-save(lm_table, file = lmfile) 
-cat(paste("  Regression results saved to '", lmfile, "'\n"))
+#   metricfile = paste(ident, phenoname, "regression_metric.RData", sep = "_")
+#   save(metric.df, file = metricfile)  
+#   cat(paste("  Regression metrics frame saved to '", metricfile, "'.\n"))
+# } else {
+#   metricfile = "none"
+# }
 
 
+
+# # + Regression results:
+
+# lm_table = as.data.frame(summary(lmout)$coefficients) 
+# lmfile = paste(ident, phenoname, "regression_lmtab.RData", sep = "_") 	
+# save(lm_table, file = lmfile) 
+# cat(paste("  Regression results saved to '", lmfile, "'\n"))
 
 
 
 
-## +++ Variance inflation factors 
-
-inflation = vif(lmout)
-
-#      PC1      PC2      PC3      PC4      PC5      PC6      PC7      PC8      PC9     PC10    array      sex      age 
-# 1.109465 1.036303 1.083822 1.995148 1.980776 1.067407 1.091136 1.241724 1.066883 1.243557 1.001764 1.010945 1.014016
 
 
-# which(sqrt(inflation) > 2)    # possibly empty
+# ## +++ Variance inflation factors 
 
-rating = ifelse(sqrt(inflation) > 2, "!!", "ok")
-vif.df = data.frame(vif = inflation, rating = rating) 
+# inflation = vif(lmout)
 
-viffile = paste(ident, phenoname, "regression_vif.RData", sep = "_")  
-save(vif.df, file = viffile)  
-cat(paste("  Variance inflation factors saved to '", viffile, "'.\n"))
+# #      PC1      PC2      PC3      PC4      PC5      PC6      PC7      PC8      PC9     PC10    array      sex      age 
+# # 1.109465 1.036303 1.083822 1.995148 1.980776 1.067407 1.091136 1.241724 1.066883 1.243557 1.001764 1.010945 1.014016
 
 
+# # which(sqrt(inflation) > 2)    # possibly empty
+
+# rating = ifelse(sqrt(inflation) > 2, "!!", "ok")
+# vif.df = data.frame(vif = inflation, rating = rating) 
+
+# viffile = paste(ident, phenoname, "regression_vif.RData", sep = "_")  
+# save(vif.df, file = viffile)  
+# cat(paste("  Variance inflation factors saved to '", viffile, "'.\n"))
 
 
-# + Histogram of the residuals   
+
+
+# # + Histogram of the residuals   
  
-if(regtype == "linear")  { # (logistic regression does not make assumptions on the distribution of the residuals)
-  histplot = paste(ident, phenoname, "resid_hist.png", sep = "_")
-  png(histplot, width = 600, height = 600)
-  hist(residuals, col = "red", breaks = 30, main = "Histogram over Residuals", font.main = 1, xlab = "Residuals")
-  invisible(dev.off())
-  cat(paste("  Histogram for residuals saved to '", histplot, "'\n")) 
-} else {
-  histplot = "none"
-}
+# if(regtype == "linear")  { # (logistic regression does not make assumptions on the distribution of the residuals)
+#   histplot = paste(ident, phenoname, "resid_hist.png", sep = "_")
+#   png(histplot, width = 600, height = 600)
+#   hist(residuals, col = "red", breaks = 30, main = "Histogram over Residuals", font.main = 1, xlab = "Residuals")
+#   invisible(dev.off())
+#   cat(paste("  Histogram for residuals saved to '", histplot, "'\n")) 
+# } else {
+#   histplot = "none"
+# }
 
 
 
-# + Linearity assumption for logistic regression:
+# # + Linearity assumption for logistic regression:
 
-if(FALSE) {  # if(regtype == "logistic")  {
-  probabilities = predict(lmout, type = "response")
-  logit = log(probabilities/(1 - probabilities))
-  # linear relationship between the logit and a quantitative predictor could be checked 
-}
-
-
-
-# +  Normal Q-Q plot of the residuals (NOT the p-values)
-
-if(regtype == "linear")  {   # logistic regression does not make assumptions on the distribution of the residuals)
-  qqplotres = paste(ident, phenoname, "resid_qq.png", sep = "_")
-  png(qqplotres, width = 600, height = 600)
-  plot(lmout, which = 2, id.n = 0)
-  # alternative: qqPlot(resid(lmout), distribution = "norm", main = "QQPlot")   library(car)
-  invisible(dev.off())
-  cat(paste("  Normal QQ-plot for residuals saved to '", qqplotres, "'\n\n")) 
-} else {
-  qqplotres = "none"  
-}
+# if(FALSE) {  # if(regtype == "logistic")  {
+#   probabilities = predict(lmout, type = "response")
+#   logit = log(probabilities/(1 - probabilities))
+#   # linear relationship between the logit and a quantitative predictor could be checked 
+# }
 
 
 
-# + Plot of Cooks distance (influential values) 
+# # +  Normal Q-Q plot of the residuals (NOT the p-values)
 
-cookplot = paste(ident, phenoname, "cook_dist.png", sep = "_")
-png(cookplot, width = 600, height = 600)
-plot(lmout, which = 4, id.n = 5)
-invisible(dev.off())
-cat(paste("  Plot of Cook's distance saved to '", cookplot, "'\n\n")) 
+# if(regtype == "linear")  {   # logistic regression does not make assumptions on the distribution of the residuals)
+#   qqplotres = paste(ident, phenoname, "resid_qq.png", sep = "_")
+#   png(qqplotres, width = 600, height = 600)
+#   plot(lmout, which = 2, id.n = 0)
+#   # alternative: qqPlot(resid(lmout), distribution = "norm", main = "QQPlot")   library(car)
+#   invisible(dev.off())
+#   cat(paste("  Normal QQ-plot for residuals saved to '", qqplotres, "'\n\n")) 
+# } else {
+#   qqplotres = "none"  
+# }
 
 
+
+# # + Plot of Cooks distance (influential values) 
+
+# cookplot = paste(ident, phenoname, "cook_dist.png", sep = "_")
+# png(cookplot, width = 600, height = 600)
+# plot(lmout, which = 4, id.n = 5)
+# invisible(dev.off())
+# cat(paste("  Plot of Cook's distance saved to '", cookplot, "'\n\n")) 
+
+###### End of commented old code for regression diagnosis
 
 
 ## +++ Store whole-genome significant markers:
 
-sigmarkers = gwas[which(gwas$P <= p_threshold),]   # signif. markers for all chromosomes 
+sigmarkers = gwas_filt[which(gwas$P <= p_threshold),]   # signif. markers for all chromosomes 
 
 if(nrow(sigmarkers) == 0) {
   cat("  No genome-wide significant markers found.\n") 
   nr_sigmarkers = 0 
-  signif_file = "none"  
+  signif_file = "none"
 } else {
   signif_file = paste(ident, phenoname, "signif_markers.RData", sep = "_")
-  other_allele = ifelse(sigmarkers$A1 == sigmarkers$REF, sigmarkers$ALT1, sigmarkers$REF) 
-  sigmarkers = cbind(sigmarkers, other_allele)     
-  sigmarkers = as.data.frame(sigmarkers[,c(3,1,2,12,6,7,8,9,10,11)])    
-  colnames(sigmarkers) = c("ID", "CHR", "POS", "OTHER", "A1", "A1_FREQ", "OBS_CT", "BETA", "SE", "P")
+  sigmarkers = as.data.frame(sigmarkers[,c(3,1,2,4,6,7,8,9,10,11,12)])    
+  colnames(sigmarkers) = c("ID", "CHR", "POS", "OTHER", "A1", "A1_FREQ", "OBS_CT", "BETA", "SE", "P", "LOG10P")
   nr_sigmarkers = nrow(sigmarkers)
   save(sigmarkers, file = signif_file)
   cat(paste("  Significant (unpruned) markers saved to", signif_file, "\n"))
@@ -839,7 +841,8 @@ cat("\n")
   
 ## +++ Genomic inflation factor, lambda
 
-p = length(gwas$P)								# no. of variants 
+#TODO: Is 0 pvals a problem in this code? Check id better to set lower R val possible
+p = length(gwas_filt$P)								# no. of variants 
 expect.stats = qchisq(ppoints(p), df = 1, lower.tail = FALSE)			# expected  
 obs.stats = qchisq(gwas$P, df = 1, lower.tail = FALSE)				# observed 
 lambda = median(obs.stats, na.rm = TRUE)/median(expect.stats, na.rm = TRUE) 	# GC lambda = ratio of medians
@@ -963,9 +966,10 @@ start_time = Sys.time()
 # 5    22 16057417  rs62224618   C    T  T 0.1015400  18771 -0.1094630 0.0776205 0.158487
 # 6    22 16439593 rs199989910   A    G  A 0.0437326  18771 -0.1393800 0.1252730 0.265891
 
-manhat = gwas[,c(3,1,2,11)]   # input frame for function manhattan.plot 
-colnames(manhat) = c("marker", "chr", "pos", "pvalue") 
-
+#manhat = gwas_filt[,c(3,1,2,11)]   # input frame for function manhattan.plot 
+manhat = gwas_filt[,c(3,1,2,12)]   # input frame for function manhattan.plot , use -10log(pval) to avoid problem w limitd scope for small values in R
+#colnames(manhat) = c("marker", "chr", "pos", "pvalue")
+colnames(manhat) = c("marker", "chr", "pos", "log10p")
 # head(manhat) 
 #        marker chr      pos   pvalue
 # 1  rs62224609  22 16051249 0.166866
@@ -982,9 +986,11 @@ if (annotation) {
 	snplist =c("rs1558902","rs17024393"),
 	labels = c("FTO","GNAT2"),
 	col = c("red","green"), kbaway=50)
-  print(manhattan.plot(manhat$chr, manhat$pos, manhat$pvalue, sig.level = 5e-8, col = colvec, should.thin = F, main = txt, annotate = ann)) 
+  #print(manhattan.plot(manhat$chr, manhat$pos, manhat$pvalue, sig.level = 5e-8, col = colvec, should.thin = F, main = txt, annotate = ann))
+  print(manhattan.plot(manhat$chr, manhat$pos, manhat$log10p, sig.level = 5e-8, col = colvec, should.thin = F, main = txt, annotate = ann)) 
 } else {  
-  print(manhattan.plot(manhat$chr, manhat$pos, manhat$pvalue, sig.level = 5e-8, col = colvec, should.thin = F, main = txt)) 
+  #print(manhattan.plot(manhat$chr, manhat$pos, manhat$pvalue, sig.level = 5e-8, col = colvec, should.thin = F, main = txt))
+  print(manhattan.plot(manhat$chr, manhat$pos, manhat$log10p, sig.level = 5e-8, col = colvec, should.thin = F, main = txt))
 }
 invisible(dev.off())
 
@@ -1028,7 +1034,7 @@ start_time = Sys.time()
 txt = paste("Job", ident, ": QQ-plot for -log10 of p-values") 
 qq_plot = paste(ident, phenoname, "QQplot.png", sep = "_") 
 png(qq_plot, width = 1024, height = 768)
-qqplot(-log10(ppoints(nrow(gwas))),-log10(gwas$P), xlab = "theoretical", ylab = "observed", main = "Q-Q Plot for -log10 Pval") 
+qqplot(-log10(ppoints(nrow(gwas_filt))), gwas_filt$LOG10P, xlab = "theoretical", ylab = "observed", main = "Q-Q Plot for -log10 Pval") 
 abline(0, 1, col = "red") 
 invisible(dev.off())
  
@@ -1118,25 +1124,25 @@ if(!file.exists(man_plot)) stop(paste("\n\n  ERROR (review_gwas.R): File", man_p
 if(!file.exists(histo_plot)) stop(paste("\n\n  ERROR (review_gwas.R): File", histo_plot, "not found.\n\n"))     
 if(!file.exists(kernel_plot)) stop(paste("\n\n  ERROR (review_gwas.R): File", kernel_plot, "not found.\n\n"))
 if(!file.exists(snp_density_plot)) stop(paste("\n\n  ERROR (review_gwas.R): File", snp_density_plot, "not found.\n\n"))
-if(!file.exists(cookplot)) stop(paste("\n\n  ERROR (review_gwas.R): File", cookplot, "not found.\n\n"))    
+# if(!file.exists(cookplot)) stop(paste("\n\n  ERROR (review_gwas.R): File", cookplot, "not found.\n\n"))    
 # regarding residuals:
-if(!file.exists(datafile)) stop(paste("\n\n  ERROR (review_gwas.R): File", datafile, "not found.\n\n"))
-if(!file.exists(residfile)) stop(paste("\n\n  ERROR (review_gwas.R): File", residfile, "not found.\n\n"))
-if(!file.exists(lmfile)) stop(paste("\n\n  ERROR (review_gwas.R): File", lmfile, "not found.\n\n"))
-if(!file.exists(viffile)) stop(paste("\n\n  ERROR (review_gwas.R): File", viffile, "not found.\n\n"))
+# if(!file.exists(datafile)) stop(paste("\n\n  ERROR (review_gwas.R): File", datafile, "not found.\n\n"))
+# if(!file.exists(residfile)) stop(paste("\n\n  ERROR (review_gwas.R): File", residfile, "not found.\n\n"))
+# if(!file.exists(lmfile)) stop(paste("\n\n  ERROR (review_gwas.R): File", lmfile, "not found.\n\n"))
+# if(!file.exists(viffile)) stop(paste("\n\n  ERROR (review_gwas.R): File", viffile, "not found.\n\n"))
 # linear regression only:
-if(regtype == "linear") {
-  if(!file.exists(histplot)) stop(paste("\n\n  ERROR (review_gwas.R): File", histplot, "not found.\n\n"))
-  if(!file.exists(metricfile)) stop(paste("\n\n  ERROR (review_gwas.R): File", metricfile, "not found.\n\n"))
-  if(!file.exists(qqplotres)) stop(paste("\n\n  ERROR (review_gwas.R): File", qqplotres, "not found.\n\n"))
-} 
+# if(regtype == "linear") {
+#   if(!file.exists(histplot)) stop(paste("\n\n  ERROR (review_gwas.R): File", histplot, "not found.\n\n"))
+#   if(!file.exists(metricfile)) stop(paste("\n\n  ERROR (review_gwas.R): File", metricfile, "not found.\n\n"))
+#   if(!file.exists(qqplotres)) stop(paste("\n\n  ERROR (review_gwas.R): File", qqplotres, "not found.\n\n"))
+# } 
 
 
 # get lm_call
 # covarname  # "PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10,array,sex,age"  # from paramfile
 covar = unlist(strsplit(covarname, ","))   # "PC1"   "PC2"   "PC3"   "PC4"   "PC5"   "PC6"   "PC7"   "PC8"   "PC9"   "PC10"  "array" "sex"   "age"   
 covar = paste(covar, collapse = " + ")     
-lm_call = paste(phenoname , "~ marker +", covar)    # "liver_fat ~ marker + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + array + sex + age"
+lm_call = paste(phenoname , "~ marker +", covar)    # "liver_fat ~ marker + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + array + sex + age"   # TODO: add category covars as well
 
 
 plist = list()
@@ -1144,7 +1150,7 @@ plist = list()
 # mandatory parameters:
 
 plist["workfolder"] = getwd() 
-plist["regtype"] = regtype    		
+#plist["regtype"] = regtype    		
 plist["ident"] = ident 
 plist["nr_samples"] = nr_samples      
 plist["nr_markers"] = nrow(gwas) 
@@ -1163,7 +1169,15 @@ plist["marker_max_miss"] = marker_max_miss
 plist["machr2_low"] = machr2_low 
 plist["machr2_high"] = machr2_high 
 plist["hwe_pval"] = hwe_pval   
-plist["form"] = form   
+#plist["form"] = form   
+
+#parameters for regenie:
+plist["regenie_bsize1"] = regenie_bsize1
+plist["regenie_bsize2"] = regenie_bsize2
+plist["regenie_trait_type"] = regenie_trait_type
+plist["regenie_info"] = regenie_info
+#plist["regenie_covarnames_cat"] = regenie_covarnames_cat
+
 
 # optional parameters:
 
@@ -1196,14 +1210,14 @@ plist["man_plot"] = man_plot
 plist["snp_density_plot"] = snp_density_plot
 plist["histo_plot"] = histo_plot
 plist["kernel_plot"] = kernel_plot
-plist["datafile"] = datafile
-plist["residfile"] = residfile
-plist["metricfile"] = metricfile
-plist["lmfile"] = lmfile
-plist["viffile"] = viffile
-plist["histplot"] = histplot
-plist["qqplotres"] = qqplotres
-plist["cookplot"] = cookplot
+#plist["datafile"] = datafile
+#plist["residfile"] = residfile
+#plist["metricfile"] = metricfile
+#plist["lmfile"] = lmfile
+#plist["viffile"] = viffile
+#plist["histplot"] = histplot
+#plist["qqplotres"] = qqplotres
+#plist["cookplot"] = cookplot
 
         
 
