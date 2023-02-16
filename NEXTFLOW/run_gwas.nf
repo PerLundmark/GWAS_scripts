@@ -72,8 +72,8 @@ params.cojo_pval = '5e-8'
 params.cojo_window = '10000'
 params.cojo_colline = '0.9'
 params.cojo_maf = '' //Need this? Should be set at higher level in the script not specific to the cojo analysis?
-params.run_cojo = true
-
+//params.run_cojo = true
+params.run_cojo = false
 
 //report settings
 params.review_minutes = "90"
@@ -100,16 +100,20 @@ chr_channel = Channel.fromList(chromosomes)
 
 
 //Process phenotype name list
-clean_phenoname = params.phenoname.replaceAll("\\s","") //Remove any whitespace
-pn_entries = clean_phenoname.split(',')
-phenonames = []
-pn_entries.each{
-    phenonames.add(it)
+if (params.phenoname != "all"){
+    clean_phenoname = params.phenoname.replaceAll("\\s","") //Remove any whitespace
+    pn_entries = clean_phenoname.split(',')
+    phenonames = []
+    pn_entries.each{
+        phenonames.add(it)
+    }
+    phenoname_channel = Channel.fromList(phenonames)
 }
+
 
 //Channel with phenotypes
 pheno_channel = Channel.fromPath(params.phenofile) //Just use file() ? https://groups.google.com/g/nextflow/c/ifZZ6g7hCBo
-phenoname_channel = Channel.fromList(phenonames)
+
 
 /*
  * Run main GWAS script (regressions) 
@@ -400,6 +404,23 @@ process run_plink_regression{
     } 2>&1 | tee -a '${logchr}'
     """
 }
+
+
+
+
+process list_phenotypes{
+    label 'short_job_1_core'
+    
+    output:
+    path "phenotype_names.list"
+
+    """
+    head -n1 ${params.phenofile} | tr '\t| ' '\n' | tail -n +3 > phenotype_names.list
+    """
+
+
+}
+
 
 
 process check_pheno_nonmissing{
@@ -749,7 +770,12 @@ workflow{
     if (params.assoc == "plink2"){
         run_plink_regression(chr_channel, pheno_channel)
     }else if (params.assoc == "regenie"){
-        check_pheno_nonmissing(phenoname_channel)
+        if (params.phenoname == "all"){
+            list_phenotypes()
+            check_pheno_nonmissing(list_phenotypes.out.splitText().map{it -> it.trim()})
+        }else{
+            check_pheno_nonmissing(phenoname_channel)
+        }
         run_regenie_step1(check_pheno_nonmissing.out)
         run_regenie_step2(chr_channel, run_regenie_step1.out)
         if(params.run_cojo){
